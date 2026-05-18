@@ -1,0 +1,128 @@
+name: Release
+
+# Запускается при пуше тега вида v1.0.0, v2.1.3 и т.д.
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: write
+
+jobs:
+  test:
+    runs-on: windows-latest
+    steps:
+    - uses: actions/checkout@v4
+    - uses: actions/setup-python@v5
+      with:
+        python-version: '3.10'
+    - run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+    - run: python -m pytest tests/ -v --tb=short
+
+  release:
+    needs: test
+    runs-on: windows-latest
+    steps:
+    - name: Скачиваем код
+      uses: actions/checkout@v4
+
+    - name: Устанавливаем 32-битный Python 3.10
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.10'
+        architecture: 'x86'
+
+    - name: Устанавливаем зависимости
+      run: |
+        python -m pip install --upgrade pip
+        pip install pyinstaller
+        pip install -r requirements.txt
+
+    - name: Определяем версию из тега
+      id: version
+      shell: bash
+      run: |
+        TAG="${GITHUB_REF#refs/tags/v}"
+        echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+        echo "Версия: $TAG"
+
+    - name: Компилируем MInstAll.exe
+      run: |
+        pyinstaller --clean --noconsole --onefile --name MInstAll_x86 --icon=icons/system.png main.py
+
+    - name: Вычисляем SHA-256 и создаём .sha256 файл
+      id: hash
+      shell: pwsh
+      run: |
+        $file = "dist/MInstAll_x86.exe"
+        $sha = (Get-FileHash $file -Algorithm SHA256).Hash.ToLower()
+        $size = (Get-Item $file).Length
+
+        # Файл .sha256 — формат "<hash>  <filename>" (как у sha256sum)
+        "$sha  MInstAll_x86.exe" | Out-File -FilePath "dist/MInstAll_x86.exe.sha256" -Encoding ASCII -NoNewline
+
+        echo "sha256=$sha" >> $env:GITHUB_OUTPUT
+        echo "size=$size" >> $env:GITHUB_OUTPUT
+        echo "SHA-256: $sha"
+        echo "Size: $size bytes"
+
+    - name: Формируем описание Release
+      id: release_body
+      shell: bash
+      run: |
+        SHA="${{ steps.hash.outputs.sha256 }}"
+        SIZE="${{ steps.hash.outputs.size }}"
+        SIZE_KB=$((SIZE / 1024))
+
+        cat > release_body.md << ENDBODY
+        ## Скачать
+
+        \`MInstAll_x86.exe\` — основной исполняемый файл (32-bit, работает на Windows 7+).
+
+        ## Проверка целостности
+
+        После скачивания проверь SHA-256:
+
+        \`\`\`powershell
+        Get-FileHash MInstAll_x86.exe -Algorithm SHA256
+        \`\`\`
+
+        Ожидаемое значение (доступно также в файле \`MInstAll_x86.exe.sha256\`):
+        \`\`\`
+        ${SHA}
+        \`\`\`
+
+        Размер: ${SIZE_KB} КБ (${SIZE} байт)
+
+        ## Предупреждение SmartScreen
+
+        При первом запуске Windows может показать "**Защитник Windows SmartScreen предотвратил запуск неопознанного приложения**".
+
+        Это нормально — приложение пока без code-signing сертификата. Чтобы запустить:
+        1. Нажми **"Подробнее"**
+        2. Нажми **"Выполнить в любом случае"**
+
+        После пары запусков Microsoft автоматически добавит репутацию.
+
+        ---
+        ENDBODY
+
+        echo "body_path=release_body.md" >> "$GITHUB_OUTPUT"
+
+    - name: Создаём GitHub Release
+      uses: softprops/action-gh-release@v2
+      with:
+        tag_name: ${{ github.ref_name }}
+        name: MInstAll v${{ steps.version.outputs.tag }}
+        draft: false
+        prerelease: false
+        generate_release_notes: true
+        body_path: ${{ steps.release_body.outputs.body_path }}
+        files: |
+          dist/MInstAll_x86.exe
+          dist/MInstAll_x86.exe.sha256
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -9,7 +9,10 @@
                 "icon": "icons/system.png",
                 "detect": {
                     "net_framework_release": 528040
-                }
+                },
+                "timeout": 600,
+                "retry": 0,
+                "uninstall_cmd": ""
             },
             {
                 "name": "DirectX (Июнь 2010)",
@@ -18,7 +21,10 @@
                 "icon": "icons/system.png",
                 "detect": {
                     "path": "%SystemRoot%\\System32\\d3dx9_43.dll"
-                }
+                },
+                "timeout": 300,
+                "retry": 1,
+                "uninstall_cmd": ""
             },
             {
                 "name": "Microsoft Visual C++ 2005-2022 Redistributable",
@@ -27,7 +33,10 @@
                 "icon": "icons/system.png",
                 "detect": {
                     "registry_name": "Microsoft Visual C++ 2022"
-                }
+                },
+                "timeout": 600,
+                "retry": 1,
+                "uninstall_cmd": ""
             }
         ],
         "ИНТЕРНЕТ И БРАУЗЕРЫ": [
@@ -39,7 +48,10 @@
                 "detect": {
                     "registry_name": "Google Chrome",
                     "min_version": "120.0"
-                }
+                },
+                "depends_on": ["Microsoft .NET Framework 4.8"],
+                "retry": 2,
+                "uninstall_cmd": "software\\chrome_installer.exe --uninstall --force-uninstall"
             },
             {
                 "name": "Telegram Desktop",
@@ -48,7 +60,9 @@
                 "icon": "icons/tg.png",
                 "detect": {
                     "registry_name": "Telegram Desktop"
-                }
+                },
+                "retry": 2,
+                "uninstall_cmd": "software\\telegram.exe /VERYSILENT /UNINSTALL"
             }
         ],
         "ОФИСНОЕ ПО": [
@@ -59,7 +73,9 @@
                 "icon": "icons/system.png",
                 "detect": {
                     "registry_name": "LibreOffice"
-                }
+                },
+                "depends_on": ["Microsoft Visual C++ 2005-2022 Redistributable"],
+                "retry": 1
             }
         ],
         "ТВИКИ ОС": [
@@ -70,7 +86,8 @@
                 "icon": "icons/system.png",
                 "detect": {
                     "always_runnable": true
-                }
+                },
+                "retry": 0
             }
         ]
     }

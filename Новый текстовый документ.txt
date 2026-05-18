@@ -1,7 +1,0 @@
-D:\sites\minstall_project\
-├── config.py    # Настройки, пути и списки программ
-├── core.py      # Ядро: логика, реестр, фоновый установщик
-├── gui.py       # Интерфейс на wxPython
-└── main.py      # Точка входа (запускатор)
-
-python -m PyInstaller --clean --noconsole --onefile --name MInstAll --icon=icons/system.png main.py

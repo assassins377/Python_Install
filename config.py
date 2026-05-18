@@ -1,7 +1,7 @@
 import sys
 import os
 
-# Определение путей с поддержкой PyInstaller --onefile
+# --- Определение путей (поддержка PyInstaller --onefile) ---
 if getattr(sys, 'frozen', False):
     SCRIPT_DIR = os.path.dirname(sys.executable)
 else:
@@ -10,31 +10,39 @@ else:
 CONFIG_FILE = os.path.join(SCRIPT_DIR, "programs.json")
 ICON_FILE = os.path.join(SCRIPT_DIR, "icons", "system.png")
 
-# --- БЕЗОПАСНОЕ ЛОГИРОВАНИЕ (Safe Logging) ---
-# Пишем логи в AppData. Если переменной нет (редкость), падаем обратно в папку скрипта
+# --- Безопасное логирование (в %LOCALAPPDATA%\MInstAll) ---
 LOG_DIR = os.path.join(os.environ.get('LOCALAPPDATA', SCRIPT_DIR), 'MInstAll')
 os.makedirs(LOG_DIR, exist_ok=True)
 LOG_FILE = os.path.join(LOG_DIR, "install.log")
 
+# --- Версионирование ---
+APP_VERSION = "2.0.0"
 CONFIG_VERSION = 2
 
-# Символы
+# --- Символы UI ---
 CHECK_ON = "☑"
 CHECK_OFF = "☐"
 RESULT_OK = "✅"
 RESULT_FAIL = "❌"
 RESULT_CANCELLED = "↺"
 
-# ВАШ СПИСОК ПРОГРАММ (Я сократил для примера, вставьте сюда весь ваш словарь DEFAULT_PROGRAMS)
-DEFAULT_PROGRAMS = {
-    "СИСТЕМНЫЕ КОМПОНЕНТЫ": [
-        {
-            "name": "Microsoft .NET Framework 4.8",
-            "cmd": "software\\net48.exe /q /norestart",
-            "desc": "Необходимый компонент для работы многих программ на Windows.",
-            "icon": "icons/system.png",
-            "detect": {"net_framework_release": 528040},
-        },
-        # ... Вставьте сюда остальные программы из старого файла ...
-    ]
-}
+# --- Subprocess ---
+CREATE_NO_WINDOW = 0x08000000
+DEFAULT_INSTALL_TIMEOUT = 900  # секунд (15 мин)
+
+# --- Watchdog: детекция зависших инсталляторов ---
+WATCHDOG_ENABLED = True
+WATCHDOG_SAMPLE_INTERVAL = 30  # секунды между замерами
+WATCHDOG_HANG_THRESHOLD = 5    # сколько подряд "тихих" замеров → killing
+WATCHDOG_CPU_THRESHOLD = 0.5   # CPU% ниже которого считаем процесс "тихим"
+
+# --- Обновления ---
+DOWNLOAD_TIMEOUT = 30  # секунды для каждого read() чанка
+DOWNLOAD_CHUNK_SIZE = 64 * 1024  # 64 КБ
+
+# --- GUI ---
+SEARCH_DEBOUNCE_MS = 300
+
+# --- Допустимые расширения инсталляторов ---
+ALLOWED_CMD_EXTENSIONS = {".exe", ".msi", ".bat", ".cmd", ".ps1", ".reg"}
+SHELL_METACHARACTERS = {"&", "|", "&&", "||", ";", "`", "$", ">", "<", "^"}

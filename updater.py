@@ -1,90 +1,264 @@
+from __future__ import annotations
+
 import os
 import sys
 import json
-import time
+import hashlib
 import subprocess
+import threading
 import urllib.request
 import logging
+from typing import Callable
 
-# Замените эти ссылки на ваши реальные!
-# Это может быть RAW-ссылка на файл в GitHub, GitLab или локальном сервере.
-VERSION_URL = "https://raw.githubusercontent.com/YourName/MInstAll/main/version.json"
-DOWNLOAD_URL = "https://github.com/YourName/MInstAll/releases/latest/download/MInstAll.exe"
+import config
+import core
 
-def check_for_updates(current_version):
+
+# --- GitHub Releases API ---
+GITHUB_REPO = "assassins377/minstall_project"
+RELEASES_API_URL = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
+
+# Имя главного exe-файла в Release assets и его контрольной суммы
+EXE_ASSET_NAME = "MInstAll_x86.exe"
+SHA256_ASSET_NAME = f"{EXE_ASSET_NAME}.sha256"
+
+USER_AGENT = f"MInstAll/{config.APP_VERSION}"
+
+
+# ------------------------------------------------------------------
+# Проверка обновлений через GitHub Releases API
+# ------------------------------------------------------------------
+def _fetch_json(url: str, timeout: int = 5) -> dict:
+    req = urllib.request.Request(url, headers={
+        "User-Agent": USER_AGENT,
+        "Accept": "application/vnd.github+json",
+    })
+    with urllib.request.urlopen(req, timeout=timeout) as response:
+        return json.loads(response.read().decode("utf-8"))
+
+
+def _fetch_text(url: str, timeout: int = 5) -> str:
+    req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
+    with urllib.request.urlopen(req, timeout=timeout) as response:
+        return response.read().decode("utf-8").strip()
+
+
+def check_for_updates(current_version: str | None = None) -> dict:
     """
-    Проверяет наличие новой версии на сервере.
-    Возвращает (has_update, latest_version_string).
+    Запрашивает GitHub Releases API. Возвращает dict:
+      {"has_update": bool, "latest": str, "url": str, "sha256": str | None,
+       "size": int | None, "notes": str}
+    или {"error": str} при сбое.
+
+    Если в Release есть файл .sha256 — он скачивается для верификации.
+    Если нет — SHA-256 верификация пропускается (с предупреждением в логе).
     """
+    current = current_version or config.APP_VERSION
+
     try:
-        # Делаем короткий таймаут, чтобы программа не зависала, если нет интернета
-        req = urllib.request.Request(VERSION_URL, headers={'User-Agent': 'Mozilla/5.0'})
-        with urllib.request.urlopen(req, timeout=3) as response:
-            data = json.loads(response.read().decode())
-            latest_version = data.get("version", 0)
-            
-            if latest_version > current_version:
-                return True, latest_version
-            return False, latest_version
+        release = _fetch_json(RELEASES_API_URL, timeout=5)
     except Exception as e:
-        logging.warning(f"Не удалось проверить обновления: {e}")
-        return False, current_version
+        logging.warning(f"Не удалось получить релизы с GitHub: {e}")
+        return {"error": str(e)}
 
-def download_and_update(main_window_callback=None):
+    # Тег вида "v2.1.0" → "2.1.0"
+    tag = str(release.get("tag_name", "")).lstrip("v")
+    if not tag:
+        return {"error": "Не удалось определить версию релиза (отсутствует tag_name)"}
+
+    notes = release.get("body", "") or ""
+    assets = release.get("assets", []) or []
+
+    # Ищем основной .exe
+    exe_asset = next((a for a in assets if a.get("name") == EXE_ASSET_NAME), None)
+    if not exe_asset:
+        return {"error": f"В релизе v{tag} нет файла {EXE_ASSET_NAME}"}
+
+    exe_url = exe_asset.get("browser_download_url")
+    exe_size = exe_asset.get("size")
+    if not exe_url:
+        return {"error": f"У файла {EXE_ASSET_NAME} нет ссылки на скачивание"}
+
+    # Опционально: .sha256 — отдельный файл с хешем
+    sha256: str | None = None
+    sha_asset = next((a for a in assets if a.get("name") == SHA256_ASSET_NAME), None)
+    if sha_asset and (sha_url := sha_asset.get("browser_download_url")):
+        try:
+            sha_text = _fetch_text(sha_url, timeout=5)
+            # Формат может быть: "abc123..." или "abc123...  MInstAll_x86.exe"
+            sha256 = sha_text.split()[0].lower()
+        except Exception as e:
+            logging.warning(f"Не удалось прочитать {SHA256_ASSET_NAME}: {e}")
+
+    if not sha256:
+        logging.warning(
+            f"В релизе v{tag} нет {SHA256_ASSET_NAME} — обновление пройдёт без верификации SHA-256"
+        )
+
+    has_update = core.compare_versions(tag, current) > 0
+    return {
+        "has_update": has_update,
+        "latest": tag,
+        "url": exe_url,
+        "sha256": sha256,
+        "size": exe_size,
+        "notes": notes,
+    }
+
+
+def check_for_updates_async(callback: Callable[[dict], None]) -> None:
     """
-    Скачивает новый файл и запускает процесс подмены.
-    main_window_callback - функция для передачи прогресса в GUI.
+    Асинхронная обёртка. callback вызывается из фонового потока —
+    GUI должен маршалить в UI-поток сам.
     """
-    if getattr(sys, 'frozen', False):
-        current_exe = sys.executable
-    else:
-        # Если запускаем скрипт из исходников (.py), обновлять нечего
+    def _worker() -> None:
+        callback(check_for_updates())
+    threading.Thread(target=_worker, daemon=True).start()
+
+
+# ------------------------------------------------------------------
+# Скачивание и применение обновления
+# ------------------------------------------------------------------
+def _download_with_progress(
+    url: str,
+    dst_path: str,
+    expected_size: int | None,
+    callback: Callable[[dict], None],
+) -> str:
+    """Скачивает файл чанками, считает SHA-256 на лету. Возвращает SHA-256."""
+    sha = hashlib.sha256()
+    downloaded = 0
+
+    req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
+    with urllib.request.urlopen(req, timeout=config.DOWNLOAD_TIMEOUT) as resp:
+        total = expected_size
+        try:
+            cl = resp.headers.get("Content-Length")
+            if cl:
+                total = int(cl)
+        except Exception:
+            pass
+
+        with open(dst_path, "wb") as out:
+            while True:
+                chunk = resp.read(config.DOWNLOAD_CHUNK_SIZE)
+                if not chunk:
+                    break
+                out.write(chunk)
+                sha.update(chunk)
+                downloaded += len(chunk)
+                if total:
+                    callback({"type": "progress", "percent": int(downloaded * 100 / total)})
+
+    return sha.hexdigest().lower()
+
+
+def download_and_update(
+    update_info: dict,
+    callback: Callable[[dict], None] | None = None,
+) -> bool:
+    """
+    Скачивает обновление, проверяет SHA-256 (если он есть в update_info),
+    формирует BAT для атомарной замены, запускает его и завершает процесс.
+    """
+    def emit(msg: dict) -> None:
+        if callback:
+            try:
+                callback(msg)
+            except Exception:
+                pass
+
+    if not getattr(sys, "frozen", False):
+        emit({"type": "error", "text": "Обновление работает только для собранного .exe"})
         return False
 
+    current_exe = sys.executable
     exe_dir = os.path.dirname(current_exe)
-    exe_name = os.path.basename(current_exe)
-    new_exe_path = os.path.join(exe_dir, exe_name + ".new")
-    bat_path = os.path.join(os.environ.get('TEMP', exe_dir), "minstall_updater.bat")
+    new_exe_path = current_exe + ".new"
+    bak_exe_path = current_exe + ".bak"
+    bat_path = os.path.join(os.environ.get("TEMP", exe_dir), "minstall_updater.bat")
+
+    for stale in (new_exe_path, bak_exe_path):
+        try:
+            if os.path.exists(stale):
+                os.remove(stale)
+        except OSError:
+            pass
 
     try:
-        if main_window_callback:
-            main_window_callback("Скачивание обновления...")
-            
-        # Скачиваем новый файл
-        req = urllib.request.Request(DOWNLOAD_URL, headers={'User-Agent': 'Mozilla/5.0'})
-        with urllib.request.urlopen(req, timeout=10) as response, open(new_exe_path, 'wb') as out_file:
-            out_file.write(response.read())
+        emit({"type": "status", "text": "Скачивание обновления..."})
+        actual_sha = _download_with_progress(
+            update_info["url"], new_exe_path, update_info.get("size"), emit
+        )
 
-        if main_window_callback:
-            main_window_callback("Установка обновления...")
+        # Верификация SHA-256 — только если ожидаемый хеш известен
+        expected_sha = update_info.get("sha256")
+        if expected_sha:
+            if actual_sha != expected_sha.lower():
+                logging.error(
+                    f"SHA-256 не совпадает. Ожидалось {expected_sha}, получено {actual_sha}"
+                )
+                try:
+                    os.remove(new_exe_path)
+                except OSError:
+                    pass
+                emit({"type": "error",
+                      "text": "Контрольная сумма не совпадает. Файл повреждён или подменён."})
+                return False
+            logging.info(f"Обновление скачано и проверено: SHA-256 {actual_sha}")
+        else:
+            logging.warning(
+                f"SHA-256 верификация пропущена (хеш не предоставлен). Загружено: {actual_sha}"
+            )
 
-        # Формируем BAT-файл для подмены
-        # ping используется как хак для паузы в 2 секунды (timeout не всегда работает в старых Windows)
+        emit({"type": "status", "text": "Применение обновления..."})
+
         bat_content = f"""@echo off
-echo Обновление MInstAll... Пожалуйста, подождите.
+chcp 866 > nul
+echo Обновление MInstAll...
 ping 127.0.0.1 -n 3 > nul
-del "{current_exe}"
-ren "{new_exe_path}" "{exe_name}"
+
+move /Y "{current_exe}" "{bak_exe_path}" >nul 2>&1
+if errorlevel 1 (
+    echo Не удалось создать резервную копию.
+    del /Q "{new_exe_path}" >nul 2>&1
+    pause
+    exit /b 1
+)
+
+move /Y "{new_exe_path}" "{current_exe}" >nul 2>&1
+if errorlevel 1 (
+    echo Не удалось применить обновление, откат.
+    move /Y "{bak_exe_path}" "{current_exe}" >nul 2>&1
+    pause
+    exit /b 1
+)
+
+del /Q "{bak_exe_path}" >nul 2>&1
 start "" "{current_exe}"
 del "%~f0"
 """
-        with open(bat_path, "w", encoding="cp866") as f:
+        with open(bat_path, "w", encoding="cp866", errors="replace") as f:
             f.write(bat_content)
 
-        # Запускаем BAT-файл в скрытом режиме и выходим
-        CREATE_NO_WINDOW = 0x08000000
         subprocess.Popen(
-            bat_path, 
-            creationflags=CREATE_NO_WINDOW, 
-            shell=True,
-            cwd=exe_dir
+            ["cmd", "/c", bat_path],
+            creationflags=config.CREATE_NO_WINDOW,
+            cwd=exe_dir,
         )
-        
+
+        emit({"type": "done"})
         logging.info("Передача управления updater.bat. Завершение работы.")
         sys.exit(0)
 
+    except SystemExit:
+        raise
     except Exception as e:
-        logging.error(f"Ошибка при загрузке обновления: {e}")
-        if os.path.exists(new_exe_path):
-            os.remove(new_exe_path)
+        logging.exception(f"Ошибка при обновлении: {e}")
+        try:
+            if os.path.exists(new_exe_path):
+                os.remove(new_exe_path)
+        except OSError:
+            pass
+        emit({"type": "error", "text": f"Ошибка: {e}"})
         return False
