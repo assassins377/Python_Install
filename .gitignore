@@ -20,3 +20,10 @@ __pycache__/
 venv_x86/
 venv_x64/
 venv/
+.venv/
+
+# Метаданные setuptools (генерируются при сборке)
+*.egg-info/
+
+# Настройки редактора
+.vscode/
