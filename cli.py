@@ -74,6 +74,8 @@ def cmd_list_programs(programs_db: dict[str, list[dict]], installed_entries: lis
     for category, progs in programs_db.items():
         cat_printed = False
         for p in progs:
+            if not core.is_program_applicable(p):
+                continue
             status, ver = core.check_status(p, installed_entries)
             if filter_status and status != filter_status:
                 continue
@@ -92,7 +94,7 @@ def cmd_list_programs(programs_db: dict[str, list[dict]], installed_entries: lis
 def cmd_list_installed(installed_entries: list[tuple[str, str]]) -> int:
     """Команда --list-installed — все программы установленные в системе."""
     if not installed_entries:
-        print("Не найдено установленных программ (либо мы не на Windows).", file=sys.stderr)
+        print("Не найдено установленных программ.", file=sys.stderr)
         return 0
     for name, version in sorted(installed_entries):
         print(f"{name}\t{version}" if version else name)
@@ -162,6 +164,9 @@ def resolve_targets(
                 not_found.append(n)
         if not_found:
             return ([], not_found)
+
+    # Отсекаем неприменимые на текущей ОС (напр. Windows-only .NET на Linux)
+    candidates = [p for p in candidates if core.is_program_applicable(p)]
 
     if missing_only:
         filtered = []

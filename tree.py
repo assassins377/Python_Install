@@ -84,6 +84,8 @@ class TreeMixin:
                 continue
             visible: list[dict] = []
             for p in programs:
+                if not core.is_program_applicable(p):
+                    continue
                 if filter_lower and not (
                     filter_lower in p["name"].lower()
                     or filter_lower in p.get("desc", "").lower()

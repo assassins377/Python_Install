@@ -386,5 +386,6 @@ from registry import (  # noqa: E402, F401
     get_net_framework_release,
     invalidate_caches,
     invalidate_installed_cache,
+    is_program_applicable,
     parse_version,
 )

@@ -230,6 +230,29 @@ def check_status(
     return ("ok", found_version)
 
 
+def is_program_applicable(program: dict) -> bool:
+    """False для записей, неприменимых на текущей ОС.
+
+    Скрывает:
+      • явную метку платформы в JSON — program["os"] ("windows" / "linux"),
+        если она задана и не совпадает с текущей ОС;
+      • Windows-only системные компоненты (detect.net_framework_release) на
+        не-Windows — .NET Framework вне Windows не существует, и без фильтра
+        такие записи вечно висели бы как «Не установлено».
+    """
+    only = (program.get("os") or "").lower()
+    cur = "windows" if os.name == "nt" else "linux"
+    if only and only not in (cur, "any", "all"):
+        return False
+
+    if os.name != "nt":
+        detect = program.get("detect") or {}
+        if detect.get("net_framework_release") is not None:
+            return False
+
+    return True
+
+
 def build_status_cache(
     programs_db: dict[str, list[dict]],
     installed_entries: list[tuple[str, str]],
@@ -237,5 +260,7 @@ def build_status_cache(
     cache: dict[str, tuple[str, str]] = {}
     for programs in programs_db.values():
         for prog in programs:
+            if not is_program_applicable(prog):
+                continue
             cache[prog["name"]] = check_status(prog, installed_entries)
     return cache

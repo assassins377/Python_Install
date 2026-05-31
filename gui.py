@@ -406,6 +406,8 @@ class MInstAllFrame(wx.Frame, MenuMixin, TreeMixin, DispatchMixin):
         installed = outdated = runnable = installable_total = 0
         for progs in self.programs_db.values():
             for p in progs:
+                if not core.is_program_applicable(p):
+                    continue
                 status, _v = self.status_cache.get(
                     p["name"], ("missing", ""),
                 )
