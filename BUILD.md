@@ -59,8 +59,8 @@ pip --version
 ### Шаг 2 — Клонирование репозитория
 
 ```powershell
-git clone https://github.com/assassins377/minstall_project.git
-cd minstall_project
+git clone https://github.com/assassins377/Python_Install.git
+cd Python_Install
 ```
 
 ### Шаг 3 — Виртуальное окружение (опционально, но рекомендуется)
@@ -189,8 +189,8 @@ sudo apt install -y \
 ### Шаг 2 — Клонирование и venv
 
 ```bash
-git clone https://github.com/assassins377/minstall_project.git
-cd minstall_project
+git clone https://github.com/assassins377/Python_Install.git
+cd Python_Install
 python3.10 -m venv .venv
 source .venv/bin/activate
 pip install --upgrade pip
@@ -462,7 +462,7 @@ CI автоматически:
 
 ### Скачивание готовых сборок без локальной компиляции
 
-[**MInstAll Releases**](https://github.com/assassins377/minstall_project/releases/latest) — всегда содержит последние x86 и x64 сборки.
+[**MInstAll Releases**](https://github.com/assassins377/Python_Install/releases/latest) — всегда содержит последние x86 и x64 сборки.
 
 ---
 

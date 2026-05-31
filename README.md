@@ -26,7 +26,7 @@
 
 ### Windows
 
-[**Последний релиз**](https://github.com/assassins377/minstall_project/releases/latest) → `MInstAll_x86.exe`
+[**Последний релиз**](https://github.com/assassins377/Python_Install/releases/latest) → `MInstAll_x86.exe`
 
 Файл работает на Windows 7 и выше (32-bit, совместим со всеми Windows-системами).
 
@@ -101,16 +101,16 @@ sha256sum MInstAll_x86.exe
 
 ```bash
 # Linux
-git clone https://github.com/assassins377/minstall_project.git
-cd minstall_project
+git clone https://github.com/assassins377/Python_Install.git
+cd Python_Install
 pip install -r requirements.txt
 python main.py
 ```
 
 ```powershell
 # Windows
-git clone https://github.com/assassins377/minstall_project.git
-cd minstall_project
+git clone https://github.com/assassins377/Python_Install.git
+cd Python_Install
 pip install -r requirements.txt
 python main.py
 ```

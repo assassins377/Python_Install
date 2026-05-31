@@ -441,7 +441,7 @@ class MInstAllFrame(wx.Frame, MenuMixin, TreeMixin, DispatchMixin):
         info.SetDescription(_("about.description"))
         info.SetCopyright(_("about.copyright"))
         info.SetWebSite(
-            "https://github.com/assassins377/minstall_project", "GitHub",
+            "https://github.com/assassins377/Python_Install", "GitHub",
         )
 
         if os.path.exists(config.ICON_FILE):

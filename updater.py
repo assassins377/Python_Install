@@ -16,7 +16,7 @@ import config
 import core
 
 # --- GitHub Releases API ---
-GITHUB_REPO = "assassins377/minstall_project"
+GITHUB_REPO = "assassins377/Python_Install"
 RELEASES_API_URL = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
 
 USER_AGENT = f"MInstAll/{config.APP_VERSION}"

@@ -132,7 +132,7 @@ def resolve_targets(
     install_arg может быть:
       "all"          — все программы из каталога
       "Chrome,Tg"    — список по именам через запятую
-      "*Chrome*"     — wildcard (TODO: пока не реализовано)
+      "*Chrome*"     — wildcard-паттерн (fnmatch по имени)
 
     missing_only=True — фильтрует, оставляя только missing/outdated.
     """
