@@ -10,6 +10,18 @@
 
 ---
 
+## Скриншоты
+
+**Windows**
+
+![MInstAll на Windows](docs/windows.png)
+
+**Linux**
+
+![MInstAll на Linux](docs/linux.png)
+
+---
+
 ## Скачать
 
 ### Windows
