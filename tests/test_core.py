@@ -12,6 +12,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import config
 import core
+import registry
 
 
 # ------------------------------------------------------------------
@@ -1243,6 +1244,169 @@ class TestFindLatestInstallLog(unittest.TestCase):
             f.write("log data")
         
         self.assertEqual(core.find_latest_install_log(name), log_path)
+
+
+# ------------------------------------------------------------------
+# dispatch_cmd — сборка команды по уже разрешённому пути инсталлятора
+# ------------------------------------------------------------------
+class TestDispatchCmd(unittest.TestCase):
+    def test_exe_direct(self) -> None:
+        args, path = core.dispatch_cmd("/tmp/app.exe", ["/S"])
+        self.assertEqual(args, ["/tmp/app.exe", "/S"])
+        self.assertEqual(path, "/tmp/app.exe")
+
+    def test_msi(self) -> None:
+        args, _p = core.dispatch_cmd("/tmp/pkg.msi", ["EXTRA=1"])
+        self.assertEqual(args[0], "msiexec")
+        self.assertIn("/qn", args)
+        self.assertIn("/norestart", args)
+        self.assertIn("EXTRA=1", args)
+
+    def test_reg(self) -> None:
+        args, _p = core.dispatch_cmd("/tmp/fix.reg", [])
+        self.assertEqual(args, ["regedit", "/s", "/tmp/fix.reg"])
+
+    def test_bat(self) -> None:
+        args, _p = core.dispatch_cmd("/tmp/run.bat", ["a"])
+        self.assertEqual(args[:2], ["cmd", "/c"])
+        self.assertIn("a", args)
+
+    def test_ps1(self) -> None:
+        args, _p = core.dispatch_cmd("/tmp/t.ps1", [])
+        self.assertEqual(args[0], "powershell")
+        self.assertIn("-NonInteractive", args)
+
+    def test_sh(self) -> None:
+        args, _p = core.dispatch_cmd("/tmp/run.sh", ["--yes"])
+        self.assertEqual(args, ["bash", "/tmp/run.sh", "--yes"])
+
+    def test_appimage(self) -> None:
+        args, _p = core.dispatch_cmd("/tmp/Foo.AppImage", [])
+        self.assertEqual(args, ["/tmp/Foo.AppImage"])
+
+    def test_unknown_ext_direct(self) -> None:
+        args, _p = core.dispatch_cmd("/tmp/bin.run", ["x"])
+        self.assertEqual(args, ["/tmp/bin.run", "x"])
+
+    def test_deb_non_admin_uses_pkexec(self) -> None:
+        with patch("core.os.name", "posix"), patch("core.is_admin", return_value=False):
+            args, _p = core.dispatch_cmd("/tmp/pkg.deb", [])
+        self.assertEqual(args[0], "pkexec")
+        self.assertIn("apt-get", args)
+        self.assertIn("/tmp/pkg.deb", args)
+
+    def test_deb_admin_no_pkexec(self) -> None:
+        with patch("core.os.name", "posix"), patch("core.is_admin", return_value=True):
+            args, _p = core.dispatch_cmd("/tmp/pkg.deb", [])
+        self.assertEqual(args[0], "apt-get")
+        self.assertNotIn("pkexec", args)
+
+
+# ------------------------------------------------------------------
+# is_program_applicable — скрытие неприменимых на текущей ОС записей
+# ------------------------------------------------------------------
+class TestIsProgramApplicable(unittest.TestCase):
+    def test_plain_program_applicable_everywhere(self) -> None:
+        prog = {"name": "Chrome", "cmd": "chrome.exe"}
+        with patch("registry.os.name", "posix"):
+            self.assertTrue(registry.is_program_applicable(prog))
+        with patch("registry.os.name", "nt"):
+            self.assertTrue(registry.is_program_applicable(prog))
+
+    def test_net_framework_hidden_on_linux(self) -> None:
+        prog = {"name": ".NET 4.8", "detect": {"net_framework_release": 528040}}
+        with patch("registry.os.name", "posix"):
+            self.assertFalse(registry.is_program_applicable(prog))
+
+    def test_net_framework_shown_on_windows(self) -> None:
+        prog = {"name": ".NET 4.8", "detect": {"net_framework_release": 528040}}
+        with patch("registry.os.name", "nt"):
+            self.assertTrue(registry.is_program_applicable(prog))
+
+    def test_os_windows_hidden_on_linux(self) -> None:
+        prog = {"name": "WinThing", "os": "windows"}
+        with patch("registry.os.name", "posix"):
+            self.assertFalse(registry.is_program_applicable(prog))
+
+    def test_os_linux_hidden_on_windows(self) -> None:
+        prog = {"name": "LinThing", "os": "linux"}
+        with patch("registry.os.name", "nt"):
+            self.assertFalse(registry.is_program_applicable(prog))
+
+    def test_os_matches_current(self) -> None:
+        with patch("registry.os.name", "posix"):
+            self.assertTrue(registry.is_program_applicable({"name": "X", "os": "linux"}))
+        with patch("registry.os.name", "nt"):
+            self.assertTrue(registry.is_program_applicable({"name": "X", "os": "windows"}))
+
+    def test_os_any_always_applicable(self) -> None:
+        prog = {"name": "X", "os": "any"}
+        with patch("registry.os.name", "posix"):
+            self.assertTrue(registry.is_program_applicable(prog))
+
+    def test_exported_via_core(self) -> None:
+        self.assertIs(core.is_program_applicable, registry.is_program_applicable)
+
+
+# ------------------------------------------------------------------
+# Детекция установленного на Linux: dpkg / flatpak / snap
+# ------------------------------------------------------------------
+class TestLinuxInstalledQueries(unittest.TestCase):
+    def test_query_dpkg_parses(self) -> None:
+        out = "firefox|115.0\ngimp|2.10.34\n"
+        with patch("registry.subprocess.check_output", return_value=out):
+            entries = registry._query_dpkg()
+        self.assertIn(("firefox", "115.0"), entries)
+        self.assertIn(("gimp", "2.10.34"), entries)
+
+    def test_query_dpkg_error_returns_empty(self) -> None:
+        with patch("registry.subprocess.check_output", side_effect=OSError("boom")):
+            self.assertEqual(registry._query_dpkg(), [])
+
+    def test_query_snap_skips_header(self) -> None:
+        out = (
+            "Name     Version   Rev   Tracking  Publisher  Notes\n"
+            "firefox  115.0     1234  latest    mozilla    -\n"
+            "core20   20230622  1974  latest    canonical  base\n"
+        )
+        with patch("registry.subprocess.check_output", return_value=out):
+            entries = registry._query_snap()
+        self.assertEqual(entries, [("firefox", "115.0"), ("core20", "20230622")])
+
+    def test_query_snap_error_returns_empty(self) -> None:
+        with patch("registry.subprocess.check_output", side_effect=OSError):
+            self.assertEqual(registry._query_snap(), [])
+
+    def test_query_flatpak_adds_name_and_appid(self) -> None:
+        out = "Firefox\torg.mozilla.firefox\t115.0\nGIMP\torg.gimp.GIMP\t2.10\n"
+        with patch("registry.subprocess.check_output", return_value=out):
+            entries = registry._query_flatpak()
+        self.assertIn(("Firefox", "115.0"), entries)
+        self.assertIn(("org.mozilla.firefox", "115.0"), entries)
+        self.assertIn(("GIMP", "2.10"), entries)
+        self.assertIn(("org.gimp.GIMP", "2.10"), entries)
+
+    def test_query_flatpak_error_returns_empty(self) -> None:
+        with patch("registry.subprocess.check_output", side_effect=OSError):
+            self.assertEqual(registry._query_flatpak(), [])
+
+    def test_aggregates_available_sources(self) -> None:
+        # На не-Windows _get_installed_programs_uncached собирает из доступных
+        # инструментов; недоступные (which → None) пропускаются.
+        def fake_which(tool: str):
+            return "/usr/bin/" + tool if tool in ("dpkg-query", "snap") else None
+
+        with patch("registry.os.name", "posix"), \
+                patch("shutil.which", side_effect=fake_which), \
+                patch("registry._query_dpkg", return_value=[("a", "1")]), \
+                patch("registry._query_snap", return_value=[("b", "2")]), \
+                patch("registry._query_flatpak", return_value=[("c", "3")]) as flat:
+            entries = registry._get_installed_programs_uncached()
+        self.assertIn(("a", "1"), entries)
+        self.assertIn(("b", "2"), entries)
+        # flatpak недоступен (which → None) → не вызывался, его записей нет
+        self.assertNotIn(("c", "3"), entries)
+        flat.assert_not_called()
 
 
 if __name__ == "__main__":
