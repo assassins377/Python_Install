@@ -7,11 +7,11 @@
 from __future__ import annotations
 
 import os
+import subprocess
 
 import wx
 
 import config
-
 
 LOG_POLL_INTERVAL_MS = 500  # как часто проверять файл (мс)
 MAX_INITIAL_LOAD_BYTES = 256 * 1024  # при открытии показываем последние 256 КБ
@@ -135,14 +135,22 @@ class LogPanel(wx.Panel):
         self.text_ctrl.ShowPosition(self.text_ctrl.GetLastPosition())
 
     def _on_clear(self, event: wx.CommandEvent) -> None:
-        """Очищает отображение (не сам файл)."""
         self.text_ctrl.Clear()
+        self._read_offset = 0
+        self._last_known_size = 0
 
     def _on_open_external(self, event: wx.CommandEvent) -> None:
-        """Открывает лог в системном редакторе."""
-        if os.path.exists(config.LOG_FILE):
-            try:
+        if not os.path.exists(config.LOG_FILE):
+            wx.MessageBox("Лог-файл ещё не создан.",
+                          "Инфо", wx.OK | wx.ICON_INFORMATION)
+            return
+        try:
+            if os.name == "nt":
                 os.startfile(config.LOG_FILE)
-            except Exception as e:
-                wx.MessageBox(f"Не удалось открыть лог:\n{e}",
-                              "Ошибка", wx.OK | wx.ICON_WARNING)
+            else:
+                subprocess.Popen(["xdg-open", config.LOG_FILE],
+                                 stdout=subprocess.DEVNULL,
+                                 stderr=subprocess.DEVNULL)
+        except Exception as e:
+            wx.MessageBox(f"Не удалось открыть лог:\n{e}",
+                          "Ошибка", wx.OK | wx.ICON_WARNING)

@@ -14,12 +14,11 @@ import hashlib
 import logging
 import os
 import threading
-from typing import Callable
+from collections.abc import Callable
 
 import wx
 
 import config
-
 
 ICON_CACHE_DIR = os.path.join(config.SCRIPT_DIR, "icons", "cache")
 
@@ -45,7 +44,7 @@ def _extract_hicon_from_exe(exe_path: str) -> int | None:
         return None
     try:
         import ctypes
-        from ctypes import wintypes, byref
+        from ctypes import byref, wintypes
 
         shell32 = ctypes.windll.shell32
         shell32.ExtractIconExW.argtypes = [

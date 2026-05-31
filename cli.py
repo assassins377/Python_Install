@@ -16,6 +16,7 @@
 """
 from __future__ import annotations
 
+import fnmatch
 import logging
 import sys
 import threading
@@ -24,7 +25,6 @@ import time
 import config
 import core
 import profiles
-
 
 # Severity → ANSI цвета для красивого вывода в терминал
 ANSI_COLORS: dict[str, str] = {
@@ -143,12 +143,21 @@ def resolve_targets(
         candidates = list(all_by_name.values())
     else:
         names = [n.strip() for n in install_arg.split(",") if n.strip()]
-        candidates = []
+        candidates: list[dict] = []
         not_found: list[str] = []
         for n in names:
-            prog = all_by_name.get(n.lower())
-            if prog:
+            if prog := all_by_name.get(n.lower()):
                 candidates.append(prog)
+            elif "*" in n or "?" in n:
+                wildcard_lower = n.lower()
+                matched = [
+                    p for name_lower, p in all_by_name.items()
+                    if fnmatch.fnmatch(name_lower, wildcard_lower)
+                ]
+                if matched:
+                    candidates.extend(matched)
+                else:
+                    not_found.append(n)
             else:
                 not_found.append(n)
         if not_found:

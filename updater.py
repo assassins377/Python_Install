@@ -1,19 +1,19 @@
 from __future__ import annotations
 
+import contextlib
+import json
+import logging
 import os
 import struct
-import sys
-import json
-import hashlib
 import subprocess
+import sys
+import tempfile
 import threading
 import urllib.request
-import logging
-from typing import Callable
+from collections.abc import Callable
 
 import config
 import core
-
 
 # --- GitHub Releases API ---
 GITHUB_REPO = "assassins377/minstall_project"
@@ -45,17 +45,19 @@ def sha256_asset_name() -> str:
 # Проверка обновлений через GitHub Releases API
 # ------------------------------------------------------------------
 def _fetch_json(url: str, timeout: int = 5) -> dict:
+    opener = core._build_opener(USER_AGENT)
     req = urllib.request.Request(url, headers={
         "User-Agent": USER_AGENT,
         "Accept": "application/vnd.github+json",
     })
-    with urllib.request.urlopen(req, timeout=timeout) as response:
+    with opener.open(req, timeout=timeout) as response:
         return json.loads(response.read().decode("utf-8"))
 
 
 def _fetch_text(url: str, timeout: int = 5) -> str:
+    opener = core._build_opener(USER_AGENT)
     req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
-    with urllib.request.urlopen(req, timeout=timeout) as response:
+    with opener.open(req, timeout=timeout) as response:
         return response.read().decode("utf-8").strip()
 
 
@@ -145,32 +147,19 @@ def _download_with_progress(
     expected_size: int | None,
     callback: Callable[[dict], None],
 ) -> str:
-    """Скачивает файл чанками, считает SHA-256 на лету. Возвращает SHA-256."""
-    sha = hashlib.sha256()
-    downloaded = 0
+    from core import _download_file
 
-    req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
-    with urllib.request.urlopen(req, timeout=config.DOWNLOAD_TIMEOUT) as resp:
-        total = expected_size
-        try:
-            cl = resp.headers.get("Content-Length")
-            if cl:
-                total = int(cl)
-        except Exception:
-            pass
+    def _wrap_cb(total: int, downloaded: int) -> None:
+        effective_total = expected_size or total
+        if effective_total:
+            callback({
+                "type": "progress",
+                "percent": int(downloaded * 100 / effective_total),
+            })
 
-        with open(dst_path, "wb") as out:
-            while True:
-                chunk = resp.read(config.DOWNLOAD_CHUNK_SIZE)
-                if not chunk:
-                    break
-                out.write(chunk)
-                sha.update(chunk)
-                downloaded += len(chunk)
-                if total:
-                    callback({"type": "progress", "percent": int(downloaded * 100 / total)})
-
-    return sha.hexdigest().lower()
+    return _download_file(
+        url, dst_path, user_agent=USER_AGENT, progress_cb=_wrap_cb,
+    )
 
 
 def download_and_update(
@@ -183,10 +172,8 @@ def download_and_update(
     """
     def emit(msg: dict) -> None:
         if callback:
-            try:
+            with contextlib.suppress(Exception):
                 callback(msg)
-            except Exception:
-                pass
 
     if not getattr(sys, "frozen", False):
         emit({"type": "error", "text": "Обновление работает только для собранного .exe"})
@@ -196,7 +183,7 @@ def download_and_update(
     exe_dir = os.path.dirname(current_exe)
     new_exe_path = current_exe + ".new"
     bak_exe_path = current_exe + ".bak"
-    bat_path = os.path.join(os.environ.get("TEMP", exe_dir), "minstall_updater.bat")
+    bat_path = os.path.join(tempfile.gettempdir(), "minstall_updater.bat")
 
     for stale in (new_exe_path, bak_exe_path):
         try:
@@ -218,10 +205,8 @@ def download_and_update(
                 logging.error(
                     f"SHA-256 не совпадает. Ожидалось {expected_sha}, получено {actual_sha}"
                 )
-                try:
+                with contextlib.suppress(OSError):
                     os.remove(new_exe_path)
-                except OSError:
-                    pass
                 emit({"type": "error",
                       "text": "Контрольная сумма не совпадает. Файл повреждён или подменён."})
                 return False

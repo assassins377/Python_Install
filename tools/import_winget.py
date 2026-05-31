@@ -35,7 +35,6 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import config
 
-
 DEFAULT_CATEGORY = "ИЗ WINGET"
 
 
@@ -55,7 +54,7 @@ def parse_winget_export(path: str) -> list[str]:
         ]
       }
     """
-    with open(path, "r", encoding="utf-8-sig") as f:
+    with open(path, encoding="utf-8-sig") as f:
         data = json.load(f)
 
     if not isinstance(data, dict):
@@ -157,7 +156,7 @@ def main() -> None:
     new_entries = [make_program_entry(pid) for pid in package_ids]
 
     if args.merge and os.path.isfile(config.CONFIG_FILE):
-        with open(config.CONFIG_FILE, "r", encoding="utf-8") as f:
+        with open(config.CONFIG_FILE, encoding="utf-8") as f:
             existing_data = json.load(f)
         existing = existing_data.get("categories", {})
         merged, count_new = merge_into_programs(existing, new_entries, args.category)

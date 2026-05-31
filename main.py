@@ -92,6 +92,10 @@ def _build_parser() -> argparse.ArgumentParser:
         "--no-elevate", action="store_true",
         help="Не пытаться авто-перезапуск с правами администратора",
     )
+    behavior_group.add_argument(
+        "--force-elevate", action="store_true",
+        help="Принудительно запросить UAC даже при запуске python-скрипта",
+    )
 
     return parser
 
@@ -112,23 +116,30 @@ def _try_elevate(args: argparse.Namespace) -> bool:
     """
     Если запущены без прав администратора — пробуем перезапуститься через UAC.
 
-    Возвращает True если elevation запустился (текущий процесс надо завершить),
-    False если уже админ / elevation отключён / UAC отклонён.
+    Авто-elevation работает только для собранного .exe (sys.frozen).
+    При запуске python-скрипта (IDLE, терминал) elevation пропускается,
+    потому что иначе IDLE теряет связь с процессом и кажется что ничего не запустилось.
+    Чтобы принудительно — передай флаг --force-elevate.
+
+    Возвращает True если elevation запустился (текущий процесс надо завершить).
     """
     import os
-    if os.name != "nt" or args.no_elevate:
+    if args.no_elevate:
+        return False
+
+    # Для python-скрипта пропускаем — кроме явного --force-elevate,
+    # Но на Linux (если это GUI) мы можем запросить pkexec
+    if not getattr(sys, "frozen", False) and not args.force_elevate and os.name == "nt":
         return False
 
     import core
     if core.is_admin():
         return False
 
-    # Пробуем UAC-relaunch
     if core.relaunch_as_admin():
         logging.info("UAC-перезапуск с правами администратора")
         return True
 
-    # Пользователь отклонил UAC или ошибка — продолжаем без админа
     logging.warning("Не удалось получить права администратора, продолжаем как есть")
     return False
 
@@ -144,6 +155,7 @@ def main() -> None:
 
     # GUI-режим
     import wx
+
     import core
     import i18n
     import state

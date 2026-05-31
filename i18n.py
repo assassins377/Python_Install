@@ -13,6 +13,7 @@
 """
 from __future__ import annotations
 
+import contextlib
 import json
 import locale
 import logging
@@ -21,11 +22,11 @@ from typing import Any
 
 import config
 
-
 # --- Список поддерживаемых языков ---
 SUPPORTED_LANGUAGES: dict[str, str] = {
     "ru": "Русский",
     "en": "English",
+    "zh": "简体中文",
 }
 DEFAULT_LANGUAGE = "ru"
 FALLBACK_LANGUAGE = "ru"
@@ -47,7 +48,7 @@ def _load_translations_file(lang: str) -> dict[str, str]:
     if not os.path.exists(path):
         return {}
     try:
-        with open(path, "r", encoding="utf-8") as f:
+        with open(path, encoding="utf-8") as f:
             data = json.load(f)
         if not isinstance(data, dict):
             logging.warning(f"i18n/{lang}.json: ожидается объект, получен {type(data).__name__}")
@@ -77,10 +78,8 @@ def detect_system_language() -> str:
     loc: str = ""
 
     # Попытка 1: locale.getlocale() — современный API
-    try:
+    with contextlib.suppress(Exception):
         loc = locale.getlocale()[0] or ""
-    except Exception:
-        pass
 
     # Попытка 2: deprecated getdefaultlocale (но работает на голой системе без setlocale)
     if not loc:

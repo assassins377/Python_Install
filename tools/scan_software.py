@@ -16,27 +16,12 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import config
-
+import scanner
 
 SUPPORTED_EXTENSIONS = {".exe", ".msi", ".bat", ".cmd", ".ps1", ".reg"}
 
 # Эвристика: имя файла -> категория
-CATEGORY_HINTS: dict[str, str] = {
-    "net":       "СИСТЕМНЫЕ КОМПОНЕНТЫ",
-    "dotnet":    "СИСТЕМНЫЕ КОМПОНЕНТЫ",
-    "directx":   "СИСТЕМНЫЕ КОМПОНЕНТЫ",
-    "vcredist":  "СИСТЕМНЫЕ КОМПОНЕНТЫ",
-    "chrome":    "ИНТЕРНЕТ И БРАУЗЕРЫ",
-    "firefox":   "ИНТЕРНЕТ И БРАУЗЕРЫ",
-    "opera":     "ИНТЕРНЕТ И БРАУЗЕРЫ",
-    "telegram":  "ИНТЕРНЕТ И БРАУЗЕРЫ",
-    "discord":   "ИНТЕРНЕТ И БРАУЗЕРЫ",
-    "libre":     "ОФИСНОЕ ПО",
-    "office":    "ОФИСНОЕ ПО",
-    "7zip":      "УТИЛИТЫ",
-    "winrar":    "УТИЛИТЫ",
-    "notepad":   "УТИЛИТЫ",
-}
+CATEGORY_HINTS = scanner.CATEGORY_HINTS
 
 DEFAULT_CATEGORY = "ПРОЧЕЕ"
 
@@ -168,7 +153,7 @@ def main() -> None:
         return
 
     if args.merge and os.path.exists(config.CONFIG_FILE):
-        with open(config.CONFIG_FILE, "r", encoding="utf-8") as f:
+        with open(config.CONFIG_FILE, encoding="utf-8") as f:
             data = json.load(f)
         existing = data.get("categories", {})
         categories, count_new = merge_with_existing(existing, scanned)

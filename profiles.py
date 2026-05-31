@@ -17,14 +17,13 @@ from typing import Any
 
 import config
 
-
 PROFILES_DIR = os.path.join(config.SCRIPT_DIR, "profiles")
 
 
 def load_profile(path: str) -> dict[str, Any] | None:
     """Читает один JSON-файл профиля. Возвращает None при ошибке."""
     try:
-        with open(path, "r", encoding="utf-8") as f:
+        with open(path, encoding="utf-8") as f:
             data = json.load(f)
     except Exception as e:
         logging.warning(f"Не удалось прочитать {path}: {e}")

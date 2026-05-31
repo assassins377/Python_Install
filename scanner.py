@@ -18,28 +18,42 @@ from typing import Any
 
 import config
 
-
 # Поддерживаемые расширения инсталляторов (без точки)
 SUPPORTED_EXTENSIONS: set[str] = set(config.ALLOWED_CMD_EXTENSIONS)
 
 
-# Эвристика "имя файла → категория" — для файлов лежащих прямо в software/
-CATEGORY_HINTS: dict[str, str] = {
-    "net":       "СИСТЕМНЫЕ КОМПОНЕНТЫ",
-    "dotnet":    "СИСТЕМНЫЕ КОМПОНЕНТЫ",
-    "directx":   "СИСТЕМНЫЕ КОМПОНЕНТЫ",
-    "vcredist":  "СИСТЕМНЫЕ КОМПОНЕНТЫ",
-    "chrome":    "ИНТЕРНЕТ И БРАУЗЕРЫ",
-    "firefox":   "ИНТЕРНЕТ И БРАУЗЕРЫ",
-    "opera":     "ИНТЕРНЕТ И БРАУЗЕРЫ",
-    "telegram":  "ИНТЕРНЕТ И БРАУЗЕРЫ",
-    "discord":   "ИНТЕРНЕТ И БРАУЗЕРЫ",
-    "libre":     "ОФИСНОЕ ПО",
-    "office":    "ОФИСНОЕ ПО",
-    "7zip":      "УТИЛИТЫ",
-    "winrar":    "УТИЛИТЫ",
-    "notepad":   "УТИЛИТЫ",
-}
+def load_category_hints() -> dict[str, str]:
+    """Загружает эвристики категорий из внешнего конфигурационного файла."""
+    default_hints = {
+        "net":       "СИСТЕМНЫЕ КОМПОНЕНТЫ",
+        "dotnet":    "СИСТЕМНЫЕ КОМПОНЕНТЫ",
+        "directx":   "СИСТЕМНЫЕ КОМПОНЕНТЫ",
+        "vcredist":  "СИСТЕМНЫЕ КОМПОНЕНТЫ",
+        "chrome":    "ИНТЕРНЕТ И БРАУЗЕРЫ",
+        "firefox":   "ИНТЕРНЕТ И БРАУЗЕРЫ",
+        "opera":     "ИНТЕРНЕТ И БРАУЗЕРЫ",
+        "telegram":  "ИНТЕРНЕТ И БРАУЗЕРЫ",
+        "discord":   "ИНТЕРНЕТ И БРАУЗЕРЫ",
+        "libre":     "ОФИСНОЕ ПО",
+        "office":    "ОФИСНОЕ ПО",
+        "7zip":      "УТИЛИТЫ",
+        "p7zip":     "УТИЛИТЫ",
+        "winrar":    "УТИЛИТЫ",
+        "notepad":   "УТИЛИТЫ",
+    }
+    if not os.path.exists(config.CATEGORY_HINTS_FILE):
+        return default_hints
+    try:
+        with open(config.CATEGORY_HINTS_FILE, encoding="utf-8") as f:
+            hints = json.load(f)
+            if isinstance(hints, dict):
+                return {str(k): str(v) for k, v in hints.items()}
+    except Exception as e:
+        logging.error(f"Не удалось загрузить {config.CATEGORY_HINTS_FILE}: {e}")
+    return default_hints
+
+
+CATEGORY_HINTS = load_category_hints()
 
 DEFAULT_CATEGORY = "ПРОЧЕЕ"
 
@@ -55,6 +69,10 @@ SILENT_FLAGS: dict[str, str] = {
     ".cmd": "",
     ".ps1": "",
     ".reg": "",
+    ".sh": "",
+    ".bash": "",
+    ".deb": "",
+    ".AppImage": "",
 }
 
 

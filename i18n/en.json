@@ -31,6 +31,8 @@
 
   "tree.file_missing": " ⚠ installer file is missing",
 
+  "category.all": "All categories",
+
   "selection.none": "Nothing selected",
   "selection.summary": "Selected: {count} (≈ {size}, ≈ {time})",
   "selection.summary_no_time": "Selected: {count} (≈ {size})",
@@ -135,6 +137,23 @@
   "summary.errors": "Errors: {n}",
   "summary.cancelled": "Cancelled: {n}",
   "summary.reboot_needed": "Reboot required",
+
+  "ctx.uninstall": "Uninstall program",
+  "status.all_filter": "All",
+  "status.missing_filter": "Not installed",
+  "status.outdated_filter": "Outdated",
+  "status.installed_filter": "Installed",
+  "status.runnable_filter": "Actions/tweaks",
+  "dialog.uninstall.confirm": "Are you sure you want to uninstall {name}?\n\nThis command will be run:\n{cmd}",
+  "dialog.uninstall.title": "Uninstall Program",
+  "status.uninstalling": "Uninstalling: {name}...",
+  "status.uninstall_success": "Program {name} successfully uninstalled",
+  "status.uninstall_failed": "Failed to uninstall program {name}",
+
+  "ctx.open_prog_log": "Open program installation log",
+  "dialog.error_log.title": "Installation Error",
+  "dialog.error_log.confirm_single": "Installation of program '{name}' failed with an error.\n\nDo you want to open the detailed installation log?",
+  "dialog.error_log.confirm_multiple": "Installation completed with errors ({count} errors).\n\nDo you want to open the folder with installer logs?",
 
   "about.description": "Universal silent installer for programs and system tweaks.\n\nAutomates deployment of working environment with support for .exe, .msi, .bat, .reg, and PowerShell scripts.",
   "about.copyright": "(C) 2026 Rosa"

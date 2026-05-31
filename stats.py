@@ -8,7 +8,6 @@
 """
 from __future__ import annotations
 
-import logging
 import os
 import shlex
 import statistics
@@ -16,7 +15,6 @@ from typing import Any
 
 import config
 import core
-
 
 MAX_HISTORY = 10  # сколько последних замеров хранить на программу
 
@@ -31,7 +29,9 @@ def get_program_file_size(program: dict) -> int:
     if not cmd_str:
         return 0
     try:
-        parts = shlex.split(cmd_str, posix=False)
+        from core import _normalize_cmd_paths
+        cmd_clean = _normalize_cmd_paths(cmd_str)
+        parts = shlex.split(cmd_clean, posix=(os.name != "nt"))
         if not parts:
             return 0
         # winget/choco — нет локального файла

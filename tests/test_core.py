@@ -3,11 +3,11 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 import tempfile
 import unittest
 from unittest.mock import patch
 
-import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import config
@@ -394,9 +394,10 @@ class TestDirectorySnapshot(unittest.TestCase):
         self.assertEqual(result, frozenset())
 
     def test_snapshot_detects_files(self) -> None:
-        import scanner
         import shutil
         import tempfile
+
+        import scanner
         root = tempfile.mkdtemp(prefix="minst_snap_")
         try:
             with open(os.path.join(root, "app.exe"), "wb") as f:
@@ -411,10 +412,11 @@ class TestDirectorySnapshot(unittest.TestCase):
 
     def test_snapshot_changes_after_modification(self) -> None:
         """Снимок меняется после изменения файла."""
-        import scanner
         import shutil
         import tempfile
         import time
+
+        import scanner
         root = tempfile.mkdtemp(prefix="minst_snap_")
         try:
             path = os.path.join(root, "app.exe")
@@ -513,8 +515,9 @@ class TestIconExtraction(unittest.TestCase):
 
     def test_resolve_uses_explicit_icon_when_exists(self) -> None:
         """Если icon из programs.json существует и не system.png — используется он."""
-        import icons
         import tempfile
+
+        import icons
         with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as f:
             f.write(b"x")
             tmp_icon = f.name
@@ -629,12 +632,13 @@ class TestBuildStatusCache(unittest.TestCase):
 # ------------------------------------------------------------------
 class TestCacheInvalidation(unittest.TestCase):
     def test_invalidate_resets_net_cache(self) -> None:
+        import registry
         # Ставим что-то в кеш
-        core._net_release_cache = (True, 528040)
-        self.assertEqual(core._net_release_cache, (True, 528040))
+        registry._net_release_cache = (True, 528040)
+        self.assertEqual(registry._net_release_cache, (True, 528040))
 
         core.invalidate_caches()
-        self.assertEqual(core._net_release_cache, (False, None))
+        self.assertEqual(registry._net_release_cache, (False, None))
 
 
 # ------------------------------------------------------------------
@@ -711,6 +715,22 @@ class TestRunHook(unittest.TestCase):
         self.assertFalse(core.run_hook("nonexistent_xyz_123.bat", "post_cmd", "App"))
 
 
+
+# ------------------------------------------------------------------
+# run_uninstall
+# ------------------------------------------------------------------
+class TestRunUninstall(unittest.TestCase):
+    def test_no_uninstall_cmd(self) -> None:
+        self.assertFalse(core.run_uninstall({}))
+        self.assertFalse(core.run_uninstall({"name": "App"}))
+
+    def test_invalid_cmd_returns_false(self) -> None:
+        self.assertFalse(core.run_uninstall({"name": "App", "uninstall_cmd": "payload.py & evil.exe"}))
+
+    def test_missing_file_returns_false(self) -> None:
+        self.assertFalse(core.run_uninstall({"name": "App", "uninstall_cmd": "nonexistent_uninstall.bat"}))
+
+
 # ------------------------------------------------------------------
 # Watchdog config
 # ------------------------------------------------------------------
@@ -751,9 +771,49 @@ class TestScanner(unittest.TestCase):
         result = scanner.scan_directory("/no/such/dir")
         self.assertEqual(result, {})
 
-    def test_scan_finds_subfolder_as_category(self) -> None:
+    def test_load_category_hints_custom_file(self) -> None:
+        import json
         import scanner
+        import tempfile
+        from unittest.mock import patch
+
+        custom_hints = {
+            "steam": "ИГРЫ",
+            "photoshop": "ГРАФИКА"
+        }
+        with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False, encoding="utf-8") as f:
+            json.dump(custom_hints, f)
+            tmp_path = f.name
+
+        try:
+            with patch.object(config, "CATEGORY_HINTS_FILE", tmp_path):
+                loaded = scanner.load_category_hints()
+                # Проверим, что кастомная эвристика загрузилась
+                self.assertEqual(loaded.get("steam"), "ИГРЫ")
+                self.assertEqual(loaded.get("photoshop"), "ГРАФИКА")
+                
+                # Временно переопределим CATEGORY_HINTS в scanner для проверки guess_category
+                with patch.object(scanner, "CATEGORY_HINTS", loaded):
+                    self.assertEqual(scanner.guess_category("steam_setup.exe"), "ИГРЫ")
+                    self.assertEqual(scanner.guess_category("photoshop_2026.exe"), "ГРАФИКА")
+                    self.assertEqual(scanner.guess_category("unknown.exe"), "ПРОЧЕЕ")
+        finally:
+            os.unlink(tmp_path)
+
+    def test_load_category_hints_missing_fallback(self) -> None:
+        import scanner
+        from unittest.mock import patch
+        
+        with patch.object(config, "CATEGORY_HINTS_FILE", "/no/such/category_hints.json"):
+            loaded = scanner.load_category_hints()
+            # Должен сработать фолбек на дефолты
+            self.assertEqual(loaded.get("chrome"), "ИНТЕРНЕТ И БРАУЗЕРЫ")
+            self.assertEqual(loaded.get("vcredist"), "СИСТЕМНЫЕ КОМПОНЕНТЫ")
+
+    def test_scan_finds_subfolder_as_category(self) -> None:
         import shutil
+
+        import scanner
         root = self._make_software_dir({
             "Office/libreoffice.msi": None,
             "Office/onlyoffice.exe": None,
@@ -766,8 +826,9 @@ class TestScanner(unittest.TestCase):
             shutil.rmtree(root, ignore_errors=True)
 
     def test_scan_finds_root_files_by_heuristic(self) -> None:
-        import scanner
         import shutil
+
+        import scanner
         root = self._make_software_dir({
             "chrome_setup.exe": None,
             "vcredist_x64.exe": None,
@@ -780,8 +841,9 @@ class TestScanner(unittest.TestCase):
             shutil.rmtree(root, ignore_errors=True)
 
     def test_scan_skips_unsupported_extensions(self) -> None:
-        import scanner
         import shutil
+
+        import scanner
         root = self._make_software_dir({
             "readme.txt": None,
             "script.py": None,
@@ -827,8 +889,9 @@ class TestScanner(unittest.TestCase):
 
     def test_scan_nested_subcategory(self) -> None:
         """software/Interface/Themes/foo.exe → категория 'INTERFACE / THEMES'."""
-        import scanner
         import shutil
+
+        import scanner
         root = self._make_software_dir({
             "Interface/Themes/dark_setup.exe": None,
             "Interface/Themes/light_setup.exe": None,
@@ -847,8 +910,9 @@ class TestScanner(unittest.TestCase):
 
     def test_scan_deeply_nested(self) -> None:
         """software/A/B/C/foo.exe → 'A / B / C'."""
-        import scanner
         import shutil
+
+        import scanner
         root = self._make_software_dir({
             "A/B/C/setup.exe": None,
         })
@@ -861,8 +925,9 @@ class TestScanner(unittest.TestCase):
 
     def test_scan_relative_path_correct_for_nested(self) -> None:
         """rel_path должен учитывать всю глубину подпапок."""
-        import scanner
         import shutil
+
+        import scanner
         root = self._make_software_dir({
             "Interface/Themes/dark.exe": None,
         })
@@ -878,8 +943,9 @@ class TestScanner(unittest.TestCase):
 
     def test_max_depth_respected(self) -> None:
         """max_depth защищает от бесконечной вложенности."""
-        import scanner
         import shutil
+
+        import scanner
         # Создаём 10 уровней вложенности
         deep_path = "a/b/c/d/e/f/g/h/i/j/setup.exe"
         root = self._make_software_dir({deep_path: None})
@@ -893,8 +959,9 @@ class TestScanner(unittest.TestCase):
 
     def test_build_catalog_from_scan_no_existing(self) -> None:
         """Без existing_db — просто scan_directory."""
-        import scanner
         import shutil
+
+        import scanner
         root = self._make_software_dir({"chrome.exe": None})
         try:
             result = scanner.build_catalog_from_scan(software_dir=root)
@@ -904,8 +971,9 @@ class TestScanner(unittest.TestCase):
 
     def test_build_catalog_preserves_metadata(self) -> None:
         """existing_db: depends_on, retry, icon — переносятся в новые записи."""
-        import scanner
         import shutil
+
+        import scanner
         root = self._make_software_dir({"chrome.exe": None})
         existing = {
             "ИНТЕРНЕТ И БРАУЗЕРЫ": [
@@ -940,8 +1008,9 @@ class TestScanner(unittest.TestCase):
 
     def test_build_catalog_removes_missing_files(self) -> None:
         """Файлы которых нет на диске — выбрасываются из каталога."""
-        import scanner
         import shutil
+
+        import scanner
         root = self._make_software_dir({"keep.exe": None})
         existing = {
             "CAT": [
@@ -1117,5 +1186,65 @@ class TestI18n(unittest.TestCase):
         self.assertIn(lang, i18n.SUPPORTED_LANGUAGES)
 
 
+# ------------------------------------------------------------------
+# find_latest_install_log
+# ------------------------------------------------------------------
+class TestFindLatestInstallLog(unittest.TestCase):
+    def setUp(self) -> None:
+        self.tmp_dir = tempfile.TemporaryDirectory()
+        self.patcher = patch("config.INSTALL_LOGS_DIR", self.tmp_dir.name)
+        self.patcher.start()
+
+    def tearDown(self) -> None:
+        self.patcher.stop()
+        self.tmp_dir.cleanup()
+
+    def test_empty_program_name(self) -> None:
+        self.assertIsNone(core.find_latest_install_log(""))
+        self.assertIsNone(core.find_latest_install_log("   "))
+        self.assertIsNone(core.find_latest_install_log("???"))
+
+    def test_no_logs_exist(self) -> None:
+        self.assertIsNone(core.find_latest_install_log("MyProgram"))
+
+    def test_single_log_exists(self) -> None:
+        name = "TestApp"
+        log_path = os.path.join(self.tmp_dir.name, "TestApp_20260531_120000.log")
+        with open(log_path, "w") as f:
+            f.write("log data")
+        
+        self.assertEqual(core.find_latest_install_log(name), log_path)
+
+    def test_multiple_logs_returns_latest(self) -> None:
+        import time
+        name = "MultiApp"
+        log_old = os.path.join(self.tmp_dir.name, "MultiApp_20260531_100000.log")
+        log_new = os.path.join(self.tmp_dir.name, "MultiApp_20260531_110000.log")
+        log_mid = os.path.join(self.tmp_dir.name, "MultiApp_20260531_103000.log")
+        
+        # Create files
+        for p in (log_old, log_new, log_mid):
+            with open(p, "w") as f:
+                f.write("data")
+        
+        # Set mtimes explicitly
+        now = time.time()
+        os.utime(log_old, (now - 3600, now - 3600))
+        os.utime(log_mid, (now - 1800, now - 1800))
+        os.utime(log_new, (now, now))
+        
+        self.assertEqual(core.find_latest_install_log(name), log_new)
+
+    def test_normalization_and_matching(self) -> None:
+        name = "My Program (v1.0)!"
+        expected_prefix = "My_Program__v1_0__"
+        log_path = os.path.join(self.tmp_dir.name, f"{expected_prefix}_20260531_120000.log")
+        with open(log_path, "w") as f:
+            f.write("log data")
+        
+        self.assertEqual(core.find_latest_install_log(name), log_path)
+
+
 if __name__ == "__main__":
     unittest.main()
+

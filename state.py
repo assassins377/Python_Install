@@ -7,7 +7,6 @@ import os
 
 import config
 
-
 STATE_FILE = os.path.join(config.LOG_DIR, "state.json")
 
 
@@ -16,7 +15,7 @@ def load_state() -> dict:
     if not os.path.exists(STATE_FILE):
         return {}
     try:
-        with open(STATE_FILE, "r", encoding="utf-8") as f:
+        with open(STATE_FILE, encoding="utf-8") as f:
             data = json.load(f)
         if isinstance(data, dict):
             return data

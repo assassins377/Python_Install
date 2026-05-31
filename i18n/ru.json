@@ -31,6 +31,8 @@
 
   "tree.file_missing": " ⚠ файл инсталлятора отсутствует",
 
+  "category.all": "Все категории",
+
   "selection.none": "Ничего не выбрано",
   "selection.summary": "Выбрано: {count} (≈ {size}, ≈ {time})",
   "selection.summary_no_time": "Выбрано: {count} (≈ {size})",
@@ -135,6 +137,23 @@
   "summary.errors": "Ошибок: {n}",
   "summary.cancelled": "Отменено: {n}",
   "summary.reboot_needed": "Требуется перезагрузка",
+
+  "ctx.uninstall": "Удалить программу",
+  "status.all_filter": "Все",
+  "status.missing_filter": "Не установлено",
+  "status.outdated_filter": "Устарело",
+  "status.installed_filter": "Установлено",
+  "status.runnable_filter": "Действия/твики",
+  "dialog.uninstall.confirm": "Вы действительно хотите удалить программу {name}?\n\nБудет запущена команда:\n{cmd}",
+  "dialog.uninstall.title": "Удаление программы",
+  "status.uninstalling": "Удаление: {name}...",
+  "status.uninstall_success": "Программа {name} успешно удалена",
+  "status.uninstall_failed": "Не удалось удалить программу {name}",
+
+  "ctx.open_prog_log": "Открыть лог установки программы",
+  "dialog.error_log.title": "Ошибка установки",
+  "dialog.error_log.confirm_single": "Установка программы '{name}' завершилась с ошибкой.\n\nХотите открыть подробный лог установки?",
+  "dialog.error_log.confirm_multiple": "Установка завершена с ошибками ({count} ош.).\n\nХотите открыть папку с логами инсталляторов?",
 
   "about.description": "Универсальный мастер тихой установки программ и системных твиков.\n\nПозволяет автоматизировать развертывание рабочего окружения с поддержкой .exe, .msi, .bat, .reg и PowerShell скриптов.",
   "about.copyright": "(C) 2026 Rosa"
