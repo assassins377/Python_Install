@@ -2,10 +2,50 @@ from __future__ import annotations
 
 import os
 import re
+import shlex
 import subprocess
 import time
 
 import config
+
+# Расширения инсталляторов, привязанные к платформе. Если у записи нет явной
+# метки "os", применимость выводим из расширения/команды: Windows-инсталлятор
+# (.exe/.msi/...) на Linux не запустится, и наоборот.
+_WINDOWS_EXTS = {".exe", ".msi", ".reg", ".bat", ".cmd", ".ps1"}
+_LINUX_EXTS = {".deb", ".appimage", ".sh", ".bash"}
+_WINDOWS_BARE = {"winget", "choco"}
+_LINUX_BARE = {"apt", "apt-get", "dpkg", "snap", "flatpak"}
+
+
+def _cmd_platform(cmd_str: str) -> str | None:
+    """Выводит платформу записи из её команды: "windows", "linux" или None.
+
+    None — команда нейтральна (например, голый "apt" встречается только на
+    Linux, но неизвестное расширение трактуем как «применимо везде»).
+    """
+    if not cmd_str:
+        return None
+    # Пути в JSON бывают с \ (Windows) или / (Linux); нормализуем перед split.
+    try:
+        parts = shlex.split(cmd_str.replace("\\", "/"), posix=True)
+    except ValueError:
+        parts = cmd_str.replace("\\", "/").split()
+    if not parts:
+        return None
+
+    base = os.path.basename(parts[0]).lower()
+    ext = os.path.splitext(base)[1]
+    if ext:
+        if ext in _WINDOWS_EXTS:
+            return "windows"
+        if ext in _LINUX_EXTS:
+            return "linux"
+        return None
+    if base in _WINDOWS_BARE:
+        return "windows"
+    if base in _LINUX_BARE:
+        return "linux"
+    return None
 
 UNINSTALL_KEYS = [
     r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall",
@@ -238,7 +278,9 @@ def is_program_applicable(program: dict) -> bool:
         если она задана и не совпадает с текущей ОС;
       • Windows-only системные компоненты (detect.net_framework_release) на
         не-Windows — .NET Framework вне Windows не существует, и без фильтра
-        такие записи вечно висели бы как «Не установлено».
+        такие записи вечно висели бы как «Не установлено»;
+      • записи без метки "os", чьё расширение инсталлятора привязано к другой
+        платформе (.exe/.msi/... — Windows; .deb/.appimage/... — Linux).
     """
     only = (program.get("os") or "").lower()
     cur = "windows" if os.name == "nt" else "linux"
@@ -248,6 +290,13 @@ def is_program_applicable(program: dict) -> bool:
     if os.name != "nt":
         detect = program.get("detect") or {}
         if detect.get("net_framework_release") is not None:
+            return False
+
+    # Без явной метки os выводим платформу из расширения команды — иначе на
+    # Linux в списке висели бы неустановимые Windows-инсталляторы (.exe/.msi).
+    if not only:
+        plat = _cmd_platform(program.get("cmd", ""))
+        if plat is not None and plat != cur:
             return False
 
     return True

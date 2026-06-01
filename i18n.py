@@ -83,10 +83,8 @@ def detect_system_language() -> str:
 
     # Попытка 2: deprecated getdefaultlocale (но работает на голой системе без setlocale)
     if not loc:
-        try:
+        with contextlib.suppress(Exception):
             loc = locale.getdefaultlocale()[0] or ""  # type: ignore[attr-defined]
-        except Exception:
-            pass
 
     # Попытка 3: Windows API напрямую (для случаев когда locale ничего не даёт)
     if not loc and os.name == "nt":

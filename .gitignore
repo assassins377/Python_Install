@@ -33,6 +33,11 @@ venv/
 .ruff_cache/
 .mypy_cache/
 
+# Отчёты о покрытии (генерируются pytest --cov)
+.coverage
+coverage.xml
+htmlcov/
+
 # Конфиг/скиллы AI-ассистента (Kilo Code) — не относится к программе
 .kilo/
 

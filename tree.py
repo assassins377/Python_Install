@@ -425,6 +425,7 @@ class TreeMixin:
             return
         try:
             import shlex
+
             from core import _normalize_cmd_paths
             cmd_clean = _normalize_cmd_paths(cmd)
             parts = shlex.split(cmd_clean, posix=(os.name != "nt"))

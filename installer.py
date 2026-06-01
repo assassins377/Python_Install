@@ -349,7 +349,7 @@ class InstallWorker(threading.Thread):
             except subprocess.TimeoutExpired:
                 proc.kill()
                 proc.wait()
-                raise subprocess.TimeoutExpired(cmd_args, timeout)
+                raise subprocess.TimeoutExpired(cmd_args, timeout) from None
 
             if watchdog_hung.is_set():
                 raise RuntimeError(

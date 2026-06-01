@@ -75,7 +75,7 @@ WATCHER_INTERVALS_MS = [0, 3000, 10000, 30000, 60000]
 INSTALLED_CACHE_TTL_SECONDS = 600  # 10 минут
 
 # --- Допустимые расширения инсталляторов ---
-ALLOWED_CMD_EXTENSIONS = {".exe", ".msi", ".bat", ".cmd", ".ps1", ".reg", ".sh", ".bash", ".deb", ".AppImage"}
+ALLOWED_CMD_EXTENSIONS = {".exe", ".msi", ".bat", ".cmd", ".ps1", ".reg", ".sh", ".bash", ".deb", ".appimage"}
 # Особые исполняемые команды без расширения (системные утилиты)
 ALLOWED_BARE_COMMANDS = {"winget", "choco", "apt", "apt-get", "dpkg", "snap", "flatpak"}
 SHELL_METACHARACTERS = {"&", "|", "&&", "||", ";", "`", "$", ">", "<", "^"}
