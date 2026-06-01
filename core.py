@@ -318,7 +318,7 @@ def dispatch_cmd(script_path: str, user_args: list[str]) -> tuple[list[str], str
         if os.name != "nt" and not is_admin():
             cmd_list = ["pkexec"] + cmd_list
         return (cmd_list, script_path)
-    if ext == ".AppImage":
+    if ext == ".appimage":
         return ([script_path] + user_args, script_path)
     return ([script_path] + user_args, script_path)
 

@@ -74,6 +74,15 @@ class TestValidateCmd(unittest.TestCase):
     def test_valid_reg(self) -> None:
         self.assertIsNone(core.validate_cmd("tweaks\\fix.reg"))
 
+    def test_valid_appimage_any_case(self) -> None:
+        # Расширение сверяется без учёта регистра — .AppImage не должен
+        # отклоняться как «недопустимое расширение».
+        self.assertIsNone(core.validate_cmd("apps/Foo.AppImage"))
+        self.assertIsNone(core.validate_cmd("apps/foo.appimage"))
+
+    def test_valid_deb(self) -> None:
+        self.assertIsNone(core.validate_cmd("pkgs/foo.deb"))
+
     def test_reject_pipe(self) -> None:
         err = core.validate_cmd("app.exe | malicious.exe")
         self.assertIsNotNone(err)
@@ -612,11 +621,11 @@ class TestBuildStatusCache(unittest.TestCase):
     def test_caches_all_programs(self) -> None:
         db = {
             "CAT1": [
-                {"name": "App1", "cmd": "a.exe", "detect": {}},
-                {"name": "App2", "cmd": "b.exe", "detect": {"always_runnable": True}},
+                {"name": "App1", "cmd": "a.exe", "detect": {}, "os": "any"},
+                {"name": "App2", "cmd": "b.exe", "detect": {"always_runnable": True}, "os": "any"},
             ],
             "CAT2": [
-                {"name": "App3", "cmd": "c.exe", "detect": {}},
+                {"name": "App3", "cmd": "c.exe", "detect": {}, "os": "any"},
             ],
         }
         installed = [("App1", "1.0")]
@@ -774,9 +783,10 @@ class TestScanner(unittest.TestCase):
 
     def test_load_category_hints_custom_file(self) -> None:
         import json
-        import scanner
         import tempfile
         from unittest.mock import patch
+
+        import scanner
 
         custom_hints = {
             "steam": "ИГРЫ",
@@ -792,7 +802,7 @@ class TestScanner(unittest.TestCase):
                 # Проверим, что кастомная эвристика загрузилась
                 self.assertEqual(loaded.get("steam"), "ИГРЫ")
                 self.assertEqual(loaded.get("photoshop"), "ГРАФИКА")
-                
+
                 # Временно переопределим CATEGORY_HINTS в scanner для проверки guess_category
                 with patch.object(scanner, "CATEGORY_HINTS", loaded):
                     self.assertEqual(scanner.guess_category("steam_setup.exe"), "ИГРЫ")
@@ -802,9 +812,10 @@ class TestScanner(unittest.TestCase):
             os.unlink(tmp_path)
 
     def test_load_category_hints_missing_fallback(self) -> None:
-        import scanner
         from unittest.mock import patch
-        
+
+        import scanner
+
         with patch.object(config, "CATEGORY_HINTS_FILE", "/no/such/category_hints.json"):
             loaded = scanner.load_category_hints()
             # Должен сработать фолбек на дефолты
@@ -1091,11 +1102,13 @@ class TestWingetCommand(unittest.TestCase):
 # ------------------------------------------------------------------
 class TestCliResolveTargets(unittest.TestCase):
     def setUp(self) -> None:
+        # os="any" — фикстуры про логику резолва имён, не про платформу,
+        # поэтому исключаем их из эвристики is_program_applicable по расширению.
         self.db = {
             "cat": [
-                {"name": "Chrome", "cmd": "c.exe", "detect": {}},
-                {"name": "Telegram", "cmd": "t.exe", "detect": {}},
-                {"name": "VLC", "cmd": "v.exe", "detect": {}},
+                {"name": "Chrome", "cmd": "c.exe", "detect": {}, "os": "any"},
+                {"name": "Telegram", "cmd": "t.exe", "detect": {}, "os": "any"},
+                {"name": "VLC", "cmd": "v.exe", "detect": {}, "os": "any"},
             ]
         }
 
@@ -1213,7 +1226,7 @@ class TestFindLatestInstallLog(unittest.TestCase):
         log_path = os.path.join(self.tmp_dir.name, "TestApp_20260531_120000.log")
         with open(log_path, "w") as f:
             f.write("log data")
-        
+
         self.assertEqual(core.find_latest_install_log(name), log_path)
 
     def test_multiple_logs_returns_latest(self) -> None:
@@ -1222,18 +1235,18 @@ class TestFindLatestInstallLog(unittest.TestCase):
         log_old = os.path.join(self.tmp_dir.name, "MultiApp_20260531_100000.log")
         log_new = os.path.join(self.tmp_dir.name, "MultiApp_20260531_110000.log")
         log_mid = os.path.join(self.tmp_dir.name, "MultiApp_20260531_103000.log")
-        
+
         # Create files
         for p in (log_old, log_new, log_mid):
             with open(p, "w") as f:
                 f.write("data")
-        
+
         # Set mtimes explicitly
         now = time.time()
         os.utime(log_old, (now - 3600, now - 3600))
         os.utime(log_mid, (now - 1800, now - 1800))
         os.utime(log_new, (now, now))
-        
+
         self.assertEqual(core.find_latest_install_log(name), log_new)
 
     def test_normalization_and_matching(self) -> None:
@@ -1242,7 +1255,7 @@ class TestFindLatestInstallLog(unittest.TestCase):
         log_path = os.path.join(self.tmp_dir.name, f"{expected_prefix}_20260531_120000.log")
         with open(log_path, "w") as f:
             f.write("log data")
-        
+
         self.assertEqual(core.find_latest_install_log(name), log_path)
 
 
@@ -1306,11 +1319,35 @@ class TestDispatchCmd(unittest.TestCase):
 # is_program_applicable — скрытие неприменимых на текущей ОС записей
 # ------------------------------------------------------------------
 class TestIsProgramApplicable(unittest.TestCase):
-    def test_plain_program_applicable_everywhere(self) -> None:
-        prog = {"name": "Chrome", "cmd": "chrome.exe"}
+    def test_neutral_cmd_applicable_everywhere(self) -> None:
+        # Неизвестное расширение не привязано к платформе → применимо везде.
+        prog = {"name": "Thing", "cmd": "installer.run --silent"}
         with patch("registry.os.name", "posix"):
             self.assertTrue(registry.is_program_applicable(prog))
         with patch("registry.os.name", "nt"):
+            self.assertTrue(registry.is_program_applicable(prog))
+
+    def test_windows_installer_hidden_on_linux(self) -> None:
+        # .exe/.msi без явной метки os не должны висеть в списке на Linux.
+        for cmd in ("software\\7-Zip.exe \\S", "pkg.msi /qn", "fix.reg"):
+            prog = {"name": "Win", "cmd": cmd}
+            with patch("registry.os.name", "posix"):
+                self.assertFalse(registry.is_program_applicable(prog), cmd)
+            with patch("registry.os.name", "nt"):
+                self.assertTrue(registry.is_program_applicable(prog), cmd)
+
+    def test_linux_installer_hidden_on_windows(self) -> None:
+        for cmd in ("foo.deb", "app.AppImage", "flatpak install y"):
+            prog = {"name": "Lin", "cmd": cmd}
+            with patch("registry.os.name", "nt"):
+                self.assertFalse(registry.is_program_applicable(prog), cmd)
+            with patch("registry.os.name", "posix"):
+                self.assertTrue(registry.is_program_applicable(prog), cmd)
+
+    def test_explicit_os_label_overrides_extension(self) -> None:
+        # Явная метка os приоритетнее эвристики по расширению.
+        prog = {"name": "X", "cmd": "a.exe", "os": "linux"}
+        with patch("registry.os.name", "posix"):
             self.assertTrue(registry.is_program_applicable(prog))
 
     def test_net_framework_hidden_on_linux(self) -> None:
