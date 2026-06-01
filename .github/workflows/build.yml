@@ -7,8 +7,34 @@ on:
     branches: [ "main" ]
 
 jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Скачиваем код
+      uses: actions/checkout@v4
+
+    - name: Устанавливаем Python 3.10
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.10'
+
+    - name: Устанавливаем ruff
+      run: |
+        python -m pip install --upgrade pip
+        pip install ruff
+
+    - name: Проверяем линтером
+      run: ruff check .
+
   test:
-    runs-on: windows-latest
+    # Тесты гоняем на обеих ОС: проект — кросс-платформенный (Windows + Linux),
+    # и платформенная логика (диспетчеризация команд, фильтрация по ОС)
+    # ведёт себя по-разному. Юнит-тесты не требуют wxPython — ставим минимум.
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
     steps:
     - name: Скачиваем код
       uses: actions/checkout@v4
@@ -21,13 +47,20 @@ jobs:
     - name: Устанавливаем зависимости
       run: |
         python -m pip install --upgrade pip
-        pip install -r requirements.txt
+        pip install psutil pytest pytest-cov
 
-    - name: Запускаем тесты
-      run: python -m pytest tests/ -v --tb=short
+    - name: Запускаем тесты с покрытием
+      run: python -m pytest tests/ -v --tb=short --cov --cov-report=term-missing --cov-report=xml
+
+    - name: Загружаем отчёт о покрытии (Linux)
+      if: matrix.os == 'ubuntu-latest'
+      uses: actions/upload-artifact@v4
+      with:
+        name: coverage-xml
+        path: coverage.xml
 
   build:
-    needs: test
+    needs: [lint, test]
     runs-on: windows-latest
     strategy:
       fail-fast: false
