@@ -56,6 +56,31 @@ class TestVersionParsing(unittest.TestCase):
 
 
 # ------------------------------------------------------------------
+# Единый источник версии: config.APP_VERSION. pyproject читает его
+# динамически (через AST), а version.json (манифест релиза) не должен
+# отставать — иначе обновлятор/упаковка разъедутся, как было с 2.2.0/2.2.1.
+# ------------------------------------------------------------------
+class TestVersionConsistency(unittest.TestCase):
+    def _root(self) -> str:
+        return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+    def test_version_json_matches_app_version(self) -> None:
+        path = os.path.join(self._root(), "version.json")
+        with open(path, encoding="utf-8") as f:
+            data = json.load(f)
+        self.assertEqual(data.get("version"), config.APP_VERSION)
+
+    def test_pyproject_version_is_dynamic(self) -> None:
+        # Версия в pyproject не задаётся литералом (иначе снова разъедется) —
+        # она объявлена dynamic и берётся из config.APP_VERSION.
+        path = os.path.join(self._root(), "pyproject.toml")
+        with open(path, encoding="utf-8") as f:
+            text = f.read()
+        self.assertIn('dynamic = ["version"]', text)
+        self.assertIn('attr = "config.APP_VERSION"', text)
+
+
+# ------------------------------------------------------------------
 # validate_cmd
 # ------------------------------------------------------------------
 class TestValidateCmd(unittest.TestCase):

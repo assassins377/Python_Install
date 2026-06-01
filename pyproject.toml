@@ -4,7 +4,9 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "minstall"
-version = "2.2.0"
+# Версия — единый источник правды: config.APP_VERSION (читается статически,
+# через AST, без импорта). Не дублируем номер здесь, чтобы он не разъезжался.
+dynamic = ["version"]
 description = "Мастер тихой установки программ и системных твиков для Windows"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -56,12 +58,37 @@ Issues = "https://github.com/assassins377/minstall_project/issues"
 [tool.setuptools]
 py-modules = ["main", "config", "core", "gui", "updater", "state"]
 
+[tool.setuptools.dynamic]
+version = { attr = "config.APP_VERSION" }
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
 addopts = "-v --tb=short"
+
+# Покрытие считаем по логике; GUI-модули (wxPython) юнит-тестами не покрываются
+# и требуют дисплея, поэтому исключены. Активируется только при `pytest --cov`.
+[tool.coverage.run]
+source = ["."]
+omit = [
+    "tests/*",
+    "tools/*",
+    "gui.py",
+    "menu.py",
+    "tree.py",
+    "icons.py",
+    "log_panel.py",
+    "dispatch.py",
+    "main.py",
+]
+
+[tool.coverage.report]
+show_missing = true
+# Порог-«трещотка»: текущее покрытие ~47%, держим планку чуть ниже, чтобы
+# ловить регресс, не требуя новых тестов на потоки/сеть прямо сейчас.
+fail_under = 40
 
 [tool.ruff]
 line-length = 100
