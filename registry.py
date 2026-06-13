@@ -122,6 +122,42 @@ def _query_snap() -> list[tuple[str, str]]:
     return entries
 
 
+def _query_rpm() -> list[tuple[str, str]]:
+    """Установленные RPM-пакеты (Fedora/RHEL): (имя_пакета, версия)."""
+    entries: list[tuple[str, str]] = []
+    try:
+        out = subprocess.check_output(
+            ["rpm", "-qa", "--queryformat", "%{NAME}|%{VERSION}\n"],
+            text=True,
+            stderr=subprocess.DEVNULL,
+        )
+    except Exception:
+        return entries
+    for line in out.strip().split("\n"):
+        if "|" in line:
+            name, version = line.split("|", 1)
+            entries.append((name, version))
+    return entries
+
+
+def _query_pacman() -> list[tuple[str, str]]:
+    """Установленные pacman-пакеты (Arch/Manjaro): (имя_пакета, версия)."""
+    entries: list[tuple[str, str]] = []
+    try:
+        out = subprocess.check_output(
+            ["pacman", "-Q", "--queryformat", "%{NAME}|%{VERSION}\n"],
+            text=True,
+            stderr=subprocess.DEVNULL,
+        )
+    except Exception:
+        return entries
+    for line in out.strip().split("\n"):
+        if "|" in line:
+            name, version = line.split("|", 1)
+            entries.append((name, version))
+    return entries
+
+
 def _get_installed_programs_uncached() -> list[tuple[str, str]]:
     if os.name != "nt":
         import shutil
@@ -132,6 +168,10 @@ def _get_installed_programs_uncached() -> list[tuple[str, str]]:
             entries.extend(_query_flatpak())
         if shutil.which("snap"):
             entries.extend(_query_snap())
+        if shutil.which("rpm"):
+            entries.extend(_query_rpm())
+        if shutil.which("pacman"):
+            entries.extend(_query_pacman())
         return entries
     import winreg
     entries: list[tuple[str, str]] = []
@@ -313,3 +353,69 @@ def build_status_cache(
                 continue
             cache[prog["name"]] = check_status(prog, installed_entries)
     return cache
+
+
+_PACKAGE_MANAGER_COMMANDS: dict[str, dict[str, str]] = {
+    "apt": {
+        "update": "apt-get install -y --only-upgrade {package}",
+        "uninstall": "apt-get remove -y {package}",
+    },
+    "dpkg": {
+        "uninstall": "dpkg -r {package}",
+    },
+    "flatpak": {
+        "update": "flatpak update -y {app_id}",
+        "uninstall": "flatpak uninstall -y {app_id}",
+    },
+    "snap": {
+        "update": "snap refresh {package}",
+        "uninstall": "snap remove {package}",
+    },
+    "rpm": {
+        "uninstall": "rpm -e {package}",
+    },
+    "pacman": {
+        "update": "pacman -S --noconfirm {package}",
+        "uninstall": "pacman -R --noconfirm {package}",
+    },
+}
+
+
+def get_linux_update_command(program: dict) -> str | None:
+    cmd_str = program.get("cmd", "")
+    if not cmd_str:
+        return None
+    try:
+        parts = shlex.split(cmd_str.replace("\\", "/"), posix=True)
+    except ValueError:
+        parts = cmd_str.replace("\\", "/").split()
+    if not parts:
+        return None
+    base = parts[0].lower()
+    if base not in _PACKAGE_MANAGER_COMMANDS:
+        return None
+    pm = _PACKAGE_MANAGER_COMMANDS[base]
+    if "update" not in pm:
+        return None
+    pkg = parts[1] if len(parts) > 1 else program.get("name", "")
+    return pm["update"].format(package=pkg, app_id=pkg)
+
+
+def get_linux_uninstall_command(program: dict) -> str | None:
+    cmd_str = program.get("cmd", "")
+    if not cmd_str:
+        return None
+    try:
+        parts = shlex.split(cmd_str.replace("\\", "/"), posix=True)
+    except ValueError:
+        parts = cmd_str.replace("\\", "/").split()
+    if not parts:
+        return None
+    base = parts[0].lower()
+    if base not in _PACKAGE_MANAGER_COMMANDS:
+        return None
+    pm = _PACKAGE_MANAGER_COMMANDS[base]
+    if "uninstall" not in pm:
+        return None
+    pkg = parts[1] if len(parts) > 1 else program.get("name", "")
+    return pm["uninstall"].format(package=pkg, app_id=pkg)

@@ -54,8 +54,27 @@ def load_category_hints() -> dict[str, str]:
 
 
 CATEGORY_HINTS = load_category_hints()
+_CATEGORY_HINTS_MTIME: float | None = None
 
 DEFAULT_CATEGORY = "ПРОЧЕЕ"
+
+
+def reload_category_hints() -> dict[str, str]:
+    """
+    Перезагружает эвристики категорий если файл изменился.
+
+    Возвращает актуальный словарь CATEGORY_HINTS.
+    """
+    global CATEGORY_HINTS, _CATEGORY_HINTS_MTIME
+
+    current_mtime = os.path.getmtime(config.CATEGORY_HINTS_FILE) if os.path.exists(config.CATEGORY_HINTS_FILE) else None
+
+    if current_mtime == _CATEGORY_HINTS_MTIME:
+        return CATEGORY_HINTS
+
+    CATEGORY_HINTS = load_category_hints()
+    _CATEGORY_HINTS_MTIME = current_mtime
+    return CATEGORY_HINTS
 
 # Разделитель путей подкатегорий: "INTERFACE / THEMES"
 # GUI парсит эту строку обратно в иерархию tree-узлов.
@@ -106,19 +125,40 @@ def filename_to_name(filename: str) -> str:
     name = re.sub(r"\s+", " ", name).strip()
     return name.title() if name else filename
 
+VERSION_RE = re.compile(
+    r"(?:[_-]|^)v?(\d+(?:\.\d+){1,3}(?:[-_.]?(?:beta|rc|alpha|b|a)\d*)?)",
+    re.IGNORECASE,
+)
 
-def _make_entry(category: str, filename: str, rel_path: str, ext: str) -> dict[str, Any]:
+def extract_version_from_filename(filename: str, custom_pattern: str | None = None) -> str:
+    if custom_pattern:
+        try:
+            match = re.search(custom_pattern, filename, re.IGNORECASE)
+            if match:
+                return match.group(1) if match.lastindex else match.group(0)
+        except re.error:
+            pass
+    match = VERSION_RE.search(filename)
+    if match:
+        return match.group(1)
+    return ""
+
+def _make_entry(category: str, filename: str, rel_path: str, ext: str, version_pattern: str | None = None) -> dict[str, Any]:
     """Создаёт program entry для programs.json."""
     name = filename_to_name(filename)
+    version = extract_version_from_filename(filename, custom_pattern=version_pattern)
     silent = SILENT_FLAGS.get(ext, "")
     cmd = f"{rel_path} {silent}".strip() if silent else rel_path
-    return {
+    entry = {
         "name": name,
         "cmd": cmd.replace("/", "\\"),
         "desc": f"Автоматически обнаружено: {filename}",
         "icon": "icons/system.png",
         "detect": {},
     }
+    if version:
+        entry["version"] = version
+    return entry
 
 
 # ====================================================================
@@ -356,7 +396,7 @@ def build_catalog_from_scan(
     PRESERVE_FIELDS = (
         "name", "desc", "icon", "detect",
         "depends_on", "retry", "timeout",
-        "pre_cmd", "post_cmd", "uninstall_cmd",
+        "pre_cmd", "post_cmd", "uninstall_cmd", "version"
     )
 
     result: dict[str, list[dict]] = {}

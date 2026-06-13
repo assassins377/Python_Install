@@ -54,6 +54,19 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Показать что будет установлено, не запуская",
     )
 
+    # --- Linux-управление ---
+    linux_group = parser.add_argument_group("Linux: обновление и удаление пакетов")
+    linux_group.add_argument(
+        "--update",
+        metavar="NAMES",
+        help="Обновить установленные пакеты через apt/flatpak/snap/pacman",
+    )
+    linux_group.add_argument(
+        "--uninstall",
+        metavar="NAMES",
+        help="Удалить пакеты через apt/flatpak/snap/dpkg/rpm/pacman",
+    )
+
     # --- Информация ---
     info_group = parser.add_argument_group("Информация")
     info_group.add_argument(
@@ -97,6 +110,21 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Принудительно запросить UAC даже при запуске python-скрипта",
     )
 
+    # --- Watchdog ---
+    watchdog_group = parser.add_argument_group("Watchdog (детектор зависших инсталляторов)")
+    watchdog_group.add_argument(
+        "--watchdog-interval", type=int, default=None,
+        help=f"Интервал замера активности в секундах (default: {config.WATCHDOG_SAMPLE_INTERVAL})",
+    )
+    watchdog_group.add_argument(
+        "--watchdog-threshold-count", type=int, default=None,
+        help=f"Количество 'тихих' замеров до завершения процесса (default: {config.WATCHDOG_HANG_THRESHOLD})",
+    )
+    watchdog_group.add_argument(
+        "--watchdog-cpu-threshold", type=float, default=None,
+        help=f"Порог CPU% ниже которого процесс считается 'тихим' (default: {config.WATCHDOG_CPU_THRESHOLD})",
+    )
+
     return parser
 
 
@@ -108,6 +136,8 @@ def _is_cli_mode(args: argparse.Namespace) -> bool:
         or args.list
         or args.list_installed
         or args.list_profiles
+        or args.update
+        or args.uninstall
         or args.no_gui
     )
 
@@ -132,11 +162,11 @@ def _try_elevate(args: argparse.Namespace) -> bool:
     if not getattr(sys, "frozen", False) and not args.force_elevate and os.name == "nt":
         return False
 
-    import core
-    if core.is_admin():
+    from core_impl import is_admin, relaunch_as_admin
+    if is_admin():
         return False
 
-    if core.relaunch_as_admin():
+    if relaunch_as_admin():
         logging.info("UAC-перезапуск с правами администратора")
         return True
 
@@ -151,17 +181,19 @@ def main() -> None:
     # CLI-режим — без wx, быстрее
     if _is_cli_mode(args):
         import cli
-        sys.exit(cli.run(args))
+        sys.exit(cli.run(
+            args,
+            watchdog_interval=args.watchdog_interval,
+            watchdog_hang_threshold=args.watchdog_hang_threshold,
+            watchdog_cpu_threshold=args.watchdog_cpu_threshold,
+        ))
 
     # GUI-режим
     import wx
 
-    import core
     import i18n
     import state
     from gui import MInstAllFrame
-
-    core.setup_logging()
 
     # Авто-elevation для GUI — UAC-диалог при старте, если ещё не админ
     if _try_elevate(args):

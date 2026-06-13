@@ -47,6 +47,9 @@
   "menu.rescan.tooltip": "Найти новые инсталляторы в папке software/ прямо сейчас",
   "menu.save_catalog": "Сохранить каталог...",
   "menu.save_catalog.tooltip": "Записать текущий список программ обратно в programs.json",
+  "menu.add_program": "Добавить программу...",
+  "menu.file": "Файл",
+  "menu.exit": "Выход",
 
   "scan.new_found": "Найдено новых программ: {count}",
   "scan.no_new": "Новых программ не найдено",
@@ -111,6 +114,7 @@
   "tree.installed_ver": "{name} — установлено (v{ver})",
   "tree.outdated": "{name} — требуется обновление до v{ver}",
   "tree.runnable": "{name} — действие/твик",
+  "tree.with_version": "{name} (v{ver})",
 
   "dialog.update.title": "Обновление",
   "dialog.update.available": "Доступна новая версия MInstAll (v{version}).\n\nСкачать и установить сейчас?",
@@ -139,6 +143,9 @@
   "summary.reboot_needed": "Требуется перезагрузка",
 
   "ctx.uninstall": "Удалить программу",
+  "ctx.edit_program": "Редактировать программу",
+  "ctx.add_program_to_category": "Добавить программу в {category}",
+  "ctx.add_new_program": "Добавить новую программу...",
   "status.all_filter": "Все",
   "status.missing_filter": "Не установлено",
   "status.outdated_filter": "Устарело",
@@ -156,5 +163,28 @@
   "dialog.error_log.confirm_multiple": "Установка завершена с ошибками ({count} ош.).\n\nХотите открыть папку с логами инсталляторов?",
 
   "about.description": "Универсальный мастер тихой установки программ и системных твиков.\n\nПозволяет автоматизировать развертывание рабочего окружения с поддержкой .exe, .msi, .bat, .reg и PowerShell скриптов.",
-  "about.copyright": "(C) 2026 Rosa"
+  "about.copyright": "(C) 2026 Rosa",
+
+  "program_editor.title": "Редактировать программу",
+  "program_editor.name": "Имя:",
+  "program_editor.cmd": "Команда установки:",
+  "program_editor.url": "URL:",
+  "program_editor.sha256": "SHA256:",
+  "program_editor.desc": "Описание:",
+  "program_editor.icon": "Иконка:",
+  "program_editor.category": "Категория:",
+  "program_editor.depends_on": "Зависимости (через запятую):",
+  "program_editor.retry": "Повторные попытки:",
+  "program_editor.timeout": "Таймаут (сек.):",
+  "program_editor.os": "ОС (windows/linux/any):",
+  "program_editor.pre_cmd": "Pre-команда:",
+  "program_editor.post_cmd": "Post-команда:",
+  "program_editor.uninstall_cmd": "Команда удаления:",
+  "program_editor.version_pattern": "Паттерн версии (regex):",
+  "program_editor.detect": "Детекция (JSON):",
+  "program_editor.error_empty_fields": "Имя и команда установки обязательны для заполнения.",
+  "program_editor.error_title": "Ошибка сохранения программы",
+  "program_editor.program_saved": "Программа успешно сохранена.",
+  "program_editor.program_added": "Новая программа успешно добавлена.",
+  "category.uncategorized": "Без категории"
 }

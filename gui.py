@@ -9,14 +9,25 @@ import wx.adv
 import wx.lib.agw.customtreectrl as CT
 
 import config
-import core
 import i18n
 import icons
 import log_panel
 import scanner
 import state
+from core_impl import (
+    InstallWorker,
+    build_status_cache,
+    get_installed_programs,
+    invalidate_caches,
+    invalidate_installed_cache,
+    is_admin,
+    is_program_applicable,
+    load_programs_from_json,
+    relaunch_as_admin,
+)
 from dispatch import DispatchMixin
 from menu import MenuMixin
+from program_editor import ProgramEditorDialog
 from tree import TreeMixin
 
 _ = i18n.t
@@ -68,7 +79,7 @@ class MInstAllFrame(wx.Frame, MenuMixin, TreeMixin, DispatchMixin):
             except Exception:
                 pass
 
-        self.programs_db: dict[str, list[dict]] = core.load_programs_from_json()
+        self.programs_db: dict[str, list[dict]] = load_programs_from_json()
 
         prefs_early = self._state.get("prefs", {})
         self._installed_cache_enabled = prefs_early.get(
@@ -94,14 +105,14 @@ class MInstAllFrame(wx.Frame, MenuMixin, TreeMixin, DispatchMixin):
             if self._last_scan_new:
                 self._catalog_dirty = True
 
-        self.installed_names: list[tuple[str, str]] = core.get_installed_programs(
+        self.installed_names: list[tuple[str, str]] = get_installed_programs(
             state_dict=self._state,
             use_cache=self._installed_cache_enabled,
         )
-        self.status_cache: dict[str, tuple[str, str]] = core.build_status_cache(
+        self.status_cache: dict[str, tuple[str, str]] = build_status_cache(
             self.programs_db, self.installed_names,
         )
-        self.worker: core.InstallWorker | None = None
+        self.worker: InstallWorker | None = None
         self.tree_data: dict = {}
         self._closing = False
 
@@ -136,7 +147,7 @@ class MInstAllFrame(wx.Frame, MenuMixin, TreeMixin, DispatchMixin):
         panel = wx.Panel(self)
         main_sizer = wx.BoxSizer(wx.VERTICAL)
 
-        if os.name == "nt" and not core.is_admin():
+        if os.name == "nt" and not is_admin():
             admin_panel = wx.Panel(panel)
             admin_panel.SetBackgroundColour(wx.Colour(255, 243, 205))
             admin_sizer = wx.BoxSizer(wx.HORIZONTAL)
@@ -170,12 +181,6 @@ class MInstAllFrame(wx.Frame, MenuMixin, TreeMixin, DispatchMixin):
         )
 
         btn_sizer = wx.BoxSizer(wx.HORIZONTAL)
-        btn_sel_all = wx.Button(panel, label=_("toolbar.select_missing"))
-        btn_sel_all.Bind(wx.EVT_BUTTON, self.select_all)
-        btn_desel_all = wx.Button(panel, label=_("toolbar.deselect_all"))
-        btn_desel_all.Bind(wx.EVT_BUTTON, self.deselect_all)
-        btn_sizer.Add(btn_sel_all, 0, wx.RIGHT, 5)
-        btn_sizer.Add(btn_desel_all, 0)
         btn_sizer.AddStretchSpacer()
         cat_label = wx.StaticText(panel, label="📂")
         btn_sizer.Add(cat_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT | wx.RIGHT, 5)
@@ -235,8 +240,7 @@ class MInstAllFrame(wx.Frame, MenuMixin, TreeMixin, DispatchMixin):
         desc_box.Add(self.desc_label, 1, wx.EXPAND | wx.ALL, 5)
         main_sizer.Add(desc_box, 0, wx.EXPAND | wx.ALL, 10)
 
-        bottom_sizer = wx.BoxSizer(wx.HORIZONTAL)
-        status_prog_sizer = wx.BoxSizer(wx.VERTICAL)
+        bottom_sizer = wx.BoxSizer(wx.VERTICAL)
         self.status_label = wx.StaticText(
             panel, label=self._initial_status_text(),
         )
@@ -260,35 +264,34 @@ class MInstAllFrame(wx.Frame, MenuMixin, TreeMixin, DispatchMixin):
         self.selection_label.SetForegroundColour(wx.Colour(100, 100, 100))
 
         self.progress_bar = wx.Gauge(panel, range=100)
-        status_prog_sizer.Add(
+        bottom_sizer.Add(
             self.status_label, 0, wx.EXPAND | wx.BOTTOM, 2,
         )
-        status_prog_sizer.Add(
-            self.selection_label, 0, wx.EXPAND | wx.BOTTOM, 2,
-        )
-        status_prog_sizer.Add(self.progress_bar, 0, wx.EXPAND)
         bottom_sizer.Add(
-            status_prog_sizer, 1, wx.EXPAND | wx.RIGHT, 15,
+            self.selection_label, 0, wx.EXPAND | wx.BOTTOM, 5,
         )
 
-        self.btn_cancel = wx.Button(
-            panel, label=_("btn.cancel"), size=(-1, 40),
+        progress_row_sizer = wx.BoxSizer(wx.HORIZONTAL)
+        progress_row_sizer.Add(
+            self.progress_bar, 1, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 15,
         )
+
+        self.btn_cancel = wx.Button(panel, label=_("btn.cancel"))
         self.btn_cancel.Bind(wx.EVT_BUTTON, self.cancel_install)
         self.btn_cancel.Disable()
 
-        self.btn_install = wx.Button(
-            panel, label=_("btn.install"), size=(-1, 40),
-        )
+        self.btn_install = wx.Button(panel, label=_("btn.install"))
         self.btn_install.Bind(wx.EVT_BUTTON, self.start_install)
 
-        bottom_sizer.Add(
+        progress_row_sizer.Add(
             self.btn_cancel, 0,
             wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 5,
         )
-        bottom_sizer.Add(
+        progress_row_sizer.Add(
             self.btn_install, 0, wx.ALIGN_CENTER_VERTICAL,
         )
+        bottom_sizer.Add(progress_row_sizer, 0, wx.EXPAND)
+
         main_sizer.Add(bottom_sizer, 0, wx.EXPAND | wx.ALL, 10)
         panel.SetSizer(main_sizer)
 
@@ -348,7 +351,7 @@ class MInstAllFrame(wx.Frame, MenuMixin, TreeMixin, DispatchMixin):
         )
 
     def _elevate(self, event: wx.CommandEvent) -> None:
-        if core.relaunch_as_admin():
+        if relaunch_as_admin():
             self.Destroy()
             sys.exit(0)
         else:
@@ -406,7 +409,7 @@ class MInstAllFrame(wx.Frame, MenuMixin, TreeMixin, DispatchMixin):
         installed = outdated = runnable = installable_total = 0
         for progs in self.programs_db.values():
             for p in progs:
-                if not core.is_program_applicable(p):
+                if not is_program_applicable(p):
                     continue
                 status, _v = self.status_cache.get(
                     p["name"], ("missing", ""),
@@ -433,6 +436,89 @@ class MInstAllFrame(wx.Frame, MenuMixin, TreeMixin, DispatchMixin):
                 _("status.runnable_count", runnable=runnable),
             )
         return ". ".join(parts) + ". " + _("app.ready")
+
+    def _on_edit_program(self, program_data: dict, tree_item: CT.CustomTreeItem | None = None) -> None:
+        # Determine the initial category for the dialog
+        initial_category = ""
+        if tree_item and tree_item.IsOk() and tree_item in self.tree_data:
+            # Get the category from the tree_item's parent, or from stored _category
+            parent_item = self.tree.GetItemParent(tree_item)
+            if parent_item and parent_item.IsOk() and parent_item != self.root_item:
+                initial_category = self.tree.GetItemText(parent_item)
+
+        dlg = ProgramEditorDialog(self, program_data=program_data)
+        # Set the category in the dialog's control for editing
+        dlg.category_ctrl.SetValue(initial_category)
+
+        if dlg.ShowModal() == wx.ID_OK:
+            updated_program_data = dlg.GetProgramData()
+            updated_category = dlg.GetCategory()
+
+            if not updated_program_data.get("name") or not updated_program_data.get("cmd"):
+                wx.MessageBox(_("program_editor.error_empty_fields"), _("program_editor.error_title"), wx.OK | wx.ICON_ERROR)
+                return
+
+            self._update_programs_db_entry(updated_program_data, updated_category, tree_item)
+            scanner.save_merged_to_disk(self.programs_db)
+            self.populate_tree(self.search_ctrl.GetValue(), category=self._active_category, status_filter=self._active_status_filter)
+            self._set_status(_("program_editor.program_saved"), "success")
+        dlg.Destroy()
+
+    def _on_add_program(self, event: wx.CommandEvent, category_name: str | None = None) -> None:
+        # Default data for a new program
+        default_program_data = {"icon": "icons/system.png"}
+
+        dlg = ProgramEditorDialog(self, program_data=default_program_data)
+        if category_name: # Pre-fill category if adding to a specific one
+            dlg.category_ctrl.SetValue(category_name)
+
+        if dlg.ShowModal() == wx.ID_OK:
+            new_program_data = dlg.GetProgramData()
+            new_category = dlg.GetCategory()
+
+            # If category is not explicitly set in dialog, try to guess from cmd or use default
+            if not new_category:
+                new_category = scanner.guess_category(new_program_data.get("cmd", "")) or _("category.uncategorized") # Use a localized default
+
+            if not new_program_data.get("name") or not new_program_data.get("cmd"):
+                wx.MessageBox(_("program_editor.error_empty_fields"), _("program_editor.error_title"), wx.OK | wx.ICON_ERROR)
+                return
+
+            self._update_programs_db_entry(new_program_data, new_category, None)
+            scanner.save_merged_to_disk(self.programs_db)
+            self.populate_tree(self.search_ctrl.GetValue(), category=self._active_category, status_filter=self._active_status_filter)
+            self._set_status(_("program_editor.program_added"), "success")
+        dlg.Destroy()
+
+    def _on_add_program_to_category(self, event: wx.CommandEvent, category_name: str) -> None:
+        self._on_add_program(event, category_name=category_name)
+
+    def _update_programs_db_entry(self, program_data: dict, new_category: str, tree_item: CT.CustomTreeItem | None):
+        # Remove old entry if editing existing
+        if tree_item and tree_item.IsOk() and tree_item in self.tree_data:
+            old_program_data = self.tree_data[tree_item]
+            # Find the actual old category by iterating programs_db
+            for cat_name, progs in list(self.programs_db.items()):
+                if old_program_data in progs:
+                    progs.remove(old_program_data)
+                    if not progs: # Remove category if it becomes empty
+                        del self.programs_db[cat_name]
+                    break
+
+        # Add new/updated entry to the correct category
+        self.programs_db.setdefault(new_category, []).append(program_data)
+
+        # Invalidate caches and refresh statuses for accurate display
+        invalidate_caches()
+        invalidate_installed_cache(self._state)
+        self.installed_names = get_installed_programs(
+            state_dict=self._state,
+            use_cache=self._installed_cache_enabled,
+        )
+        self.status_cache = build_status_cache(
+            self.programs_db, self.installed_names,
+        )
+
 
     def on_about(self, event: wx.CommandEvent) -> None:
         info = wx.adv.AboutDialogInfo()

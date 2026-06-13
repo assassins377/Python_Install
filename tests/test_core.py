@@ -1327,14 +1327,14 @@ class TestDispatchCmd(unittest.TestCase):
         self.assertEqual(args, ["/tmp/bin.run", "x"])
 
     def test_deb_non_admin_uses_pkexec(self) -> None:
-        with patch("core.os.name", "posix"), patch("core.is_admin", return_value=False):
+        with patch("utils.os.name", "posix"), patch("utils.is_admin", return_value=False):
             args, _p = core.dispatch_cmd("/tmp/pkg.deb", [])
         self.assertEqual(args[0], "pkexec")
         self.assertIn("apt-get", args)
         self.assertIn("/tmp/pkg.deb", args)
 
     def test_deb_admin_no_pkexec(self) -> None:
-        with patch("core.os.name", "posix"), patch("core.is_admin", return_value=True):
+        with patch("utils.os.name", "posix"), patch("utils.is_admin", return_value=True):
             args, _p = core.dispatch_cmd("/tmp/pkg.deb", [])
         self.assertEqual(args[0], "apt-get")
         self.assertNotIn("pkexec", args)

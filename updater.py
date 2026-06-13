@@ -13,7 +13,8 @@ import urllib.request
 from collections.abc import Callable
 
 import config
-import core
+from core_impl import compare_versions
+from utils import _build_opener, _download_file
 
 # --- GitHub Releases API ---
 GITHUB_REPO = "assassins377/Python_Install"
@@ -45,7 +46,7 @@ def sha256_asset_name() -> str:
 # Проверка обновлений через GitHub Releases API
 # ------------------------------------------------------------------
 def _fetch_json(url: str, timeout: int = 5) -> dict:
-    opener = core._build_opener(USER_AGENT)
+    opener = _build_opener(USER_AGENT)
     req = urllib.request.Request(url, headers={
         "User-Agent": USER_AGENT,
         "Accept": "application/vnd.github+json",
@@ -55,7 +56,7 @@ def _fetch_json(url: str, timeout: int = 5) -> dict:
 
 
 def _fetch_text(url: str, timeout: int = 5) -> str:
-    opener = core._build_opener(USER_AGENT)
+    opener = _build_opener(USER_AGENT)
     req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
     with opener.open(req, timeout=timeout) as response:
         return response.read().decode("utf-8").strip()
@@ -117,7 +118,7 @@ def check_for_updates(current_version: str | None = None) -> dict:
             f"В релизе v{tag} нет {sha_name} — обновление пройдёт без верификации SHA-256"
         )
 
-    has_update = core.compare_versions(tag, current) > 0
+    has_update = compare_versions(tag, current) > 0
     return {
         "has_update": has_update,
         "latest": tag,
@@ -147,7 +148,6 @@ def _download_with_progress(
     expected_size: int | None,
     callback: Callable[[dict], None],
 ) -> str:
-    from core import _download_file
 
     def _wrap_cb(total: int, downloaded: int) -> None:
         effective_total = expected_size or total

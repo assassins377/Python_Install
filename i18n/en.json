@@ -45,8 +45,11 @@
   "time.minutes_seconds": "{m}min {s}s",
   "menu.rescan": "Rescan software/",
   "menu.rescan.tooltip": "Look for new installers in software/ right now",
-  "menu.save_catalog": "Save catalog...",
+  "menu.save_catalog": "Save Catalog...",
   "menu.save_catalog.tooltip": "Write current program list back to programs.json",
+  "menu.add_program": "Add Program...",
+  "menu.file": "File",
+  "menu.exit": "Exit",
 
   "scan.new_found": "New programs found: {count}",
   "scan.no_new": "No new programs found",
@@ -111,6 +114,7 @@
   "tree.installed_ver": "{name} — installed (v{ver})",
   "tree.outdated": "{name} — update to v{ver}",
   "tree.runnable": "{name} — action/tweak",
+  "tree.with_version": "{name} (v{ver})",
 
   "dialog.update.title": "Update",
   "dialog.update.available": "A new version of MInstAll is available (v{version}).\n\nDownload and install now?",
@@ -139,6 +143,9 @@
   "summary.reboot_needed": "Reboot required",
 
   "ctx.uninstall": "Uninstall program",
+  "ctx.edit_program": "Edit Program",
+  "ctx.add_program_to_category": "Add Program to {category}",
+  "ctx.add_new_program": "Add New Program...",
   "status.all_filter": "All",
   "status.missing_filter": "Not installed",
   "status.outdated_filter": "Outdated",
@@ -156,5 +163,28 @@
   "dialog.error_log.confirm_multiple": "Installation completed with errors ({count} errors).\n\nDo you want to open the folder with installer logs?",
 
   "about.description": "Universal silent installer for programs and system tweaks.\n\nAutomates deployment of working environment with support for .exe, .msi, .bat, .reg, and PowerShell scripts.",
-  "about.copyright": "(C) 2026 Rosa"
+  "about.copyright": "(C) 2026 Rosa",
+
+  "program_editor.title": "Edit Program",
+  "program_editor.name": "Name:",
+  "program_editor.cmd": "Install Command:",
+  "program_editor.url": "URL:",
+  "program_editor.sha256": "SHA256:",
+  "program_editor.desc": "Description:",
+  "program_editor.icon": "Icon:",
+  "program_editor.category": "Category:",
+  "program_editor.depends_on": "Depends On (comma separated):",
+  "program_editor.retry": "Retries:",
+  "program_editor.timeout": "Timeout (sec.):",
+  "program_editor.os": "OS (windows/linux/any):",
+  "program_editor.pre_cmd": "Pre-Command:",
+  "program_editor.post_cmd": "Post-Command:",
+  "program_editor.uninstall_cmd": "Uninstall Command:",
+  "program_editor.version_pattern": "Version Pattern (regex):",
+  "program_editor.detect": "Detection (JSON):",
+  "program_editor.error_empty_fields": "Name and install command are required.",
+  "program_editor.error_title": "Error Saving Program",
+  "program_editor.program_saved": "Program saved successfully.",
+  "program_editor.program_added": "New program added successfully.",
+  "category.uncategorized": "Uncategorized"
 }

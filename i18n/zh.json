@@ -111,6 +111,7 @@
   "tree.installed_ver": "{name} — 已安装 (v{ver})",
   "tree.outdated": "{name} — 请更新到 v{ver}",
   "tree.runnable": "{name} — 操作/优化",
+  "tree.with_version": "{name} (v{ver})",
 
   "dialog.update.title": "更新",
   "dialog.update.available": "有新版本的 MInstAll 可用 (v{version})。\n\n下载并立即安装？",

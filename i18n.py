@@ -14,6 +14,7 @@
 from __future__ import annotations
 
 import contextlib
+import functools
 import json
 import locale
 import logging
@@ -70,6 +71,7 @@ def load_translations() -> None:
 # ------------------------------------------------------------------
 # Автодетекция системного языка
 # ------------------------------------------------------------------
+@functools.lru_cache(maxsize=1)
 def detect_system_language() -> str:
     """
     Определяет язык системы. Возвращает один из SUPPORTED_LANGUAGES

@@ -6,14 +6,22 @@ import subprocess
 import wx
 
 import config
-import core
 import i18n
 import state
 import stats
+from core_impl import (
+    InstallWorker,
+    build_status_cache,
+    find_latest_install_log,
+    get_installed_programs,
+    invalidate_caches,
+    invalidate_installed_cache,
+    resolve_dependencies,
+)
 
 
 class DispatchMixin:
-    worker: core.InstallWorker | None
+    worker: InstallWorker | None
     programs_db: dict
     _state: dict
     _closing: bool
@@ -46,7 +54,7 @@ class DispatchMixin:
             self._set_status("Вы ничего не выбрали!", "error")
             return
 
-        tasks = core.resolve_dependencies(tasks, self.programs_db)
+        tasks = resolve_dependencies(tasks, self.programs_db)
 
         self.btn_install.Disable()
         self.btn_cancel.Enable()
@@ -56,11 +64,14 @@ class DispatchMixin:
             if not self._closing:
                 wx.CallAfter(self.on_worker_message, msg)
 
-        self.worker = core.InstallWorker(
+        self.worker = InstallWorker(
             tasks,
             dispatch,
             parallel=self._parallel_enabled,
             all_programs=self.programs_db,
+            watchdog_interval=None,  # GUI doesn't expose these, use defaults
+            watchdog_hang_threshold=None,
+            watchdog_cpu_threshold=None,
         )
         self.worker.start()
 
@@ -110,13 +121,13 @@ class DispatchMixin:
             ". ".join(lines) + "." if lines else "Готово.", severity,
         )
 
-        core.invalidate_caches()
-        core.invalidate_installed_cache(self._state)
-        self.installed_names = core.get_installed_programs(
+        invalidate_caches()
+        invalidate_installed_cache(self._state)
+        self.installed_names = get_installed_programs(
             state_dict=self._state,
             use_cache=self._installed_cache_enabled,
         )
-        self.status_cache = core.build_status_cache(
+        self.status_cache = build_status_cache(
             self.programs_db, self.installed_names,
         )
         cat = getattr(self, '_active_category', '')
@@ -167,7 +178,7 @@ class DispatchMixin:
                 )
                 try:
                     if dlg.ShowModal() == wx.ID_YES:
-                        log_path = core.find_latest_install_log(failed_name)
+                        log_path = find_latest_install_log(failed_name)
                         if log_path:
                             try:
                                 if os.name == "nt":
@@ -275,6 +286,11 @@ class DispatchMixin:
             else:
                 event.Veto()
         else:
+            self._closing = True
+            if hasattr(self, '_watcher_timer') and self._watcher_timer.IsRunning():
+                self._watcher_timer.Stop()
+            if hasattr(self, '_search_timer') and self._search_timer.IsRunning():
+                self._search_timer.Stop()
             self._save_window_state()
             self._save_session()
             event.Skip()

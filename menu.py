@@ -3,11 +3,15 @@ from __future__ import annotations
 import wx
 
 import config
-import core
 import i18n
 import profiles
 import scanner
 import state
+from core_impl import (
+    build_status_cache,
+    invalidate_installed_cache,
+    load_programs_from_json,
+)
 
 _ = i18n.t
 
@@ -47,6 +51,18 @@ class MenuMixin:
 
     def create_menu(self) -> None:
         menubar = wx.MenuBar()
+
+        file_menu = wx.Menu()
+        add_prog_item = file_menu.Append(wx.ID_ANY, _("menu.add_program"))
+        self.Bind(wx.EVT_MENU, self._on_add_program, add_prog_item)
+        save_catalog_item = file_menu.Append(
+            wx.ID_ANY, _("menu.save_catalog"), _("menu.save_catalog.tooltip")
+        )
+        self.Bind(wx.EVT_MENU, self._on_save_catalog, save_catalog_item)
+        file_menu.AppendSeparator()
+        exit_item = file_menu.Append(wx.ID_EXIT, _("menu.exit"))
+        self.Bind(wx.EVT_MENU, self.on_closing, exit_item)
+        menubar.Append(file_menu, _("menu.file"))
 
         settings_menu = wx.Menu()
         self._parallel_menu_item = settings_menu.AppendCheckItem(
@@ -136,11 +152,6 @@ class MenuMixin:
             wx.ID_ANY, _("menu.rescan"), _("menu.rescan.tooltip")
         )
         self.Bind(wx.EVT_MENU, self._on_rescan, rescan_item)
-
-        save_catalog_item = settings_menu.Append(
-            wx.ID_ANY, _("menu.save_catalog"), _("menu.save_catalog.tooltip")
-        )
-        self.Bind(wx.EVT_MENU, self._on_save_catalog, save_catalog_item)
 
         settings_menu.AppendSubMenu(lang_menu, _("menu.language"))
         menubar.Append(settings_menu, _("menu.settings"))
@@ -254,7 +265,7 @@ class MenuMixin:
         prefs = self._state.setdefault("prefs", {})
         prefs["installed_cache"] = self._installed_cache_enabled
         if not self._installed_cache_enabled:
-            core.invalidate_installed_cache(self._state)
+            invalidate_installed_cache(self._state)
         state.save_state(self._state)
 
     def _on_toggle_gen_from_scan(self, event: wx.CommandEvent) -> None:
@@ -267,7 +278,7 @@ class MenuMixin:
             self.programs_db = scanner.build_catalog_from_scan(
                 existing_db=self.programs_db,
             )
-            self.status_cache = core.build_status_cache(
+            self.status_cache = build_status_cache(
                 self.programs_db, self.installed_names,
             )
             cat = getattr(self, '_active_category', '')
@@ -295,14 +306,14 @@ class MenuMixin:
 
         if self._gen_from_scan:
             self.programs_db = scanner.build_catalog_from_scan(
-                existing_db=core.load_programs_from_json(),
+                existing_db=load_programs_from_json(),
             )
         else:
             self.programs_db, _merged = scanner.scan_and_merge(
-                core.load_programs_from_json(),
+                load_programs_from_json(),
             )
 
-        self.status_cache = core.build_status_cache(
+        self.status_cache = build_status_cache(
             self.programs_db, self.installed_names,
         )
         cat = getattr(self, '_active_category', '')
@@ -319,7 +330,7 @@ class MenuMixin:
             self._set_status(_("scan.no_new"), "info")
             return
 
-        self.status_cache = core.build_status_cache(
+        self.status_cache = build_status_cache(
             self.programs_db, self.installed_names,
         )
         self._catalog_dirty = True

@@ -14,6 +14,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 import config
 import deps
+from utils import _download_file, _normalize_cmd_paths, build_cmd, dispatch_cmd
 
 RETRYABLE_EXIT_CODES = {
     1618,
@@ -64,8 +65,6 @@ def download_installer(
 ) -> str:
     import urllib.parse
 
-    from core import _download_file
-
     os.makedirs(dest_dir, exist_ok=True)
 
     parsed = urllib.parse.urlparse(url)
@@ -94,7 +93,6 @@ def download_installer(
 
 
 def is_installer_available(program: dict) -> bool:
-    from core import build_cmd
 
     if program.get("url"):
         return True
@@ -116,6 +114,9 @@ def _watchdog_monitor(
     pid: int,
     stop_event: threading.Event,
     hung_event: threading.Event,
+    watchdog_sample_interval: int,
+    watchdog_hang_threshold: int,
+    watchdog_cpu_threshold: float,
 ) -> None:
     try:
         import psutil
@@ -146,13 +147,13 @@ def _watchdog_monitor(
                 except (psutil.NoSuchProcess, psutil.AccessDenied):
                     continue
 
-            if cpu < config.WATCHDOG_CPU_THRESHOLD:
+            if cpu < watchdog_cpu_threshold:
                 silent_count += 1
                 logging.debug(
                     f"Watchdog PID={pid}: тихий замер {silent_count}/"
-                    f"{config.WATCHDOG_HANG_THRESHOLD} (CPU={cpu:.2f}%)"
+                    f"{watchdog_hang_threshold} (CPU={cpu:.2f}%)"
                 )
-                if silent_count >= config.WATCHDOG_HANG_THRESHOLD:
+                if silent_count >= watchdog_hang_threshold:
                     logging.warning(
                         f"Watchdog PID={pid}: процесс завис "
                         f"({silent_count} замеров без CPU), завершаем"
@@ -177,7 +178,6 @@ def _watchdog_monitor(
 
 
 def run_hook(cmd_str: str, hook_name: str = "hook", task_name: str = "") -> bool:
-    from core import build_cmd
 
     if not cmd_str:
         return True
@@ -217,7 +217,6 @@ def run_hook(cmd_str: str, hook_name: str = "hook", task_name: str = "") -> bool
 
 
 def run_uninstall(task: dict) -> bool:
-    from core import build_cmd
 
     uninstall_cmd = task.get("uninstall_cmd", "")
     name = task.get("name", "Unknown")
@@ -267,6 +266,9 @@ class InstallWorker(threading.Thread):
         parallel: bool = False,
         max_jobs: int | None = None,
         all_programs: dict[str, list[dict]] | None = None,
+        watchdog_interval: int | None = None,
+        watchdog_hang_threshold: int | None = None,
+        watchdog_cpu_threshold: float | None = None,
     ) -> None:
         super().__init__(daemon=True)
         self.tasks = tasks
@@ -291,6 +293,11 @@ class InstallWorker(threading.Thread):
         self._task_timings_lock = threading.Lock()
 
         self._msi_semaphore = threading.Semaphore(1)
+
+        # Watchdog overrides
+        self._watchdog_interval = watchdog_interval or config.WATCHDOG_SAMPLE_INTERVAL
+        self._watchdog_hang_threshold = watchdog_hang_threshold or config.WATCHDOG_HANG_THRESHOLD
+        self._watchdog_cpu_threshold = watchdog_cpu_threshold or config.WATCHDOG_CPU_THRESHOLD
 
     def stop(self) -> None:
         self._is_running = False
@@ -338,7 +345,7 @@ class InstallWorker(threading.Thread):
         if config.WATCHDOG_ENABLED:
             watchdog_thread = threading.Thread(
                 target=_watchdog_monitor,
-                args=(proc.pid, watchdog_stop, watchdog_hung),
+                args=(proc.pid, watchdog_stop, watchdog_hung, self._watchdog_interval, self._watchdog_hang_threshold, self._watchdog_cpu_threshold),
                 daemon=True,
             )
             watchdog_thread.start()
@@ -365,7 +372,6 @@ class InstallWorker(threading.Thread):
                 self._active_procs.discard(proc)
 
     def _install_one_task(self, task: dict, emit_scroll: bool = True) -> None:
-        from core import build_cmd
 
         item_id = task.get("_item_id")
         name = task["name"]
@@ -416,7 +422,6 @@ class InstallWorker(threading.Thread):
                     expected_sha256=task.get("sha256"),
                     progress_cb=_dl_progress,
                 )
-                from core import _normalize_cmd_paths, dispatch_cmd
 
                 # Пользовательские аргументы берём из cmd, а имя файла из JSON
                 # заменяем на реально скачанный путь. Диспетчеризация по
@@ -732,3 +737,61 @@ class InstallWorker(threading.Thread):
                 install_logs=self._install_logs,
                 task_timings=self._task_timings,
             )
+
+
+def run_linux_update(program: dict) -> bool:
+    from registry import get_linux_update_command
+    cmd_str = get_linux_update_command(program)
+    if not cmd_str:
+        logging.info(f"Нет команды обновления для {program.get('name', 'Unknown')}")
+        return False
+    try:
+        cmd_args = shlex.split(cmd_str, posix=True)
+    except ValueError:
+        logging.error(f"Невалидная команда обновления: {cmd_str}")
+        return False
+    try:
+        proc = subprocess.Popen(
+            cmd_args,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        proc.wait(timeout=config.DEFAULT_INSTALL_TIMEOUT)
+        if proc.returncode == 0:
+            logging.info(f"Обновление OK: {program.get('name', 'Unknown')}")
+            return True
+        else:
+            logging.warning(f"Обновление {program.get('name', 'Unknown')}: код {proc.returncode}")
+            return False
+    except Exception as e:
+        logging.exception(f"Ошибка обновления {program.get('name', 'Unknown')}: {e}")
+        return False
+
+
+def run_linux_uninstall(program: dict) -> bool:
+    from registry import get_linux_uninstall_command
+    cmd_str = get_linux_uninstall_command(program)
+    if not cmd_str:
+        logging.info(f"Нет команды удаления для {program.get('name', 'Unknown')}")
+        return False
+    try:
+        cmd_args = shlex.split(cmd_str, posix=True)
+    except ValueError:
+        logging.error(f"Невалидная команда удаления: {cmd_str}")
+        return False
+    try:
+        proc = subprocess.Popen(
+            cmd_args,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        proc.wait(timeout=config.DEFAULT_INSTALL_TIMEOUT)
+        if proc.returncode == 0:
+            logging.info(f"Удаление OK: {program.get('name', 'Unknown')}")
+            return True
+        else:
+            logging.warning(f"Удаление {program.get('name', 'Unknown')}: код {proc.returncode}")
+            return False
+    except Exception as e:
+        logging.exception(f"Ошибка удаления {program.get('name', 'Unknown')}: {e}")
+        return False

@@ -14,7 +14,7 @@ import statistics
 from typing import Any
 
 import config
-import core
+from utils import _normalize_cmd_paths, resolve_path
 
 MAX_HISTORY = 10  # сколько последних замеров хранить на программу
 
@@ -29,7 +29,6 @@ def get_program_file_size(program: dict) -> int:
     if not cmd_str:
         return 0
     try:
-        from core import _normalize_cmd_paths
         cmd_clean = _normalize_cmd_paths(cmd_str)
         parts = shlex.split(cmd_clean, posix=(os.name != "nt"))
         if not parts:
@@ -38,7 +37,7 @@ def get_program_file_size(program: dict) -> int:
         first = parts[0].lower()
         if os.path.splitext(first)[1] == "" and os.path.basename(first) in config.ALLOWED_BARE_COMMANDS:
             return 0
-        path = core.resolve_path(parts[0])
+        path = resolve_path(parts[0])
         return os.path.getsize(path) if os.path.exists(path) else 0
     except (ValueError, OSError):
         return 0

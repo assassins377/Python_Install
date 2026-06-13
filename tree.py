@@ -9,10 +9,21 @@ import wx.adv
 import wx.lib.agw.customtreectrl as CT
 
 import config
-import core
 import i18n
 import icons
 import stats
+from core_impl import (
+    build_status_cache,
+    find_latest_install_log,
+    get_installed_programs,
+    invalidate_caches,
+    invalidate_installed_cache,
+    is_installer_available,
+    is_program_applicable,
+    resolve_path,
+    run_uninstall,
+)
+from utils import _normalize_cmd_paths
 
 _ = i18n.t
 
@@ -84,14 +95,14 @@ class TreeMixin:
                 continue
             visible: list[dict] = []
             for p in programs:
-                if not core.is_program_applicable(p):
+                if not is_program_applicable(p):
                     continue
                 if filter_lower and not (
                     filter_lower in p["name"].lower()
                     or filter_lower in p.get("desc", "").lower()
                 ):
                     continue
-                if self._hide_missing and not core.is_installer_available(p):
+                if self._hide_missing and not is_installer_available(p):
                     continue
 
                 status = self.status_cache.get(p["name"], ("missing", ""))[0]
@@ -109,7 +120,7 @@ class TreeMixin:
                     prog["name"], ("missing", ""),
                 )
                 min_ver = (prog.get("detect") or {}).get("min_version")
-                available = core.is_installer_available(prog)
+                available = is_installer_available(prog)
 
                 if status == "ok":
                     label = (
@@ -121,6 +132,8 @@ class TreeMixin:
                     label = _("tree.outdated", name=prog["name"], ver=min_ver)
                 elif status == "runnable":
                     label = _("tree.runnable", name=prog["name"])
+                elif prog.get("version"):
+                    label = _("tree.with_version", name=prog["name"], ver=prog["version"])
                 else:
                     label = prog["name"]
 
@@ -146,9 +159,9 @@ class TreeMixin:
                         prog_item, wx.Colour(106, 27, 154),
                     )
 
-                icon_path = icons.resolve_program_icon(prog, core.resolve_path)
+                icon_path = icons.resolve_program_icon(prog, resolve_path)
                 if not icon_path:
-                    fallback = core.resolve_path(
+                    fallback = resolve_path(
                         prog.get("icon") or "icons/system.png",
                     )
                     if os.path.exists(fallback):
@@ -171,6 +184,8 @@ class TreeMixin:
                 if prog["name"] in checked_names:
                     self.tree.CheckItem(prog_item, True)
 
+            self.tree.SetItemText(cat_item, f"{cat_name} ({len(visible)})")
+
         if filter_lower:
             self.tree.ExpandAll()
         else:
@@ -183,7 +198,7 @@ class TreeMixin:
         for item, data in self.tree_data.items():
             if data["_status"] == "ok":
                 continue
-            if not core.is_installer_available(data):
+            if not is_installer_available(data):
                 continue
             self.tree.CheckItem(item, True)
         self._update_selection_counter()
@@ -286,7 +301,7 @@ class TreeMixin:
             meta_lines.append(f"Зависит от: {', '.join(deps)}")
         if (retry := data.get("retry", 0)) > 0:
             meta_lines.append(f"Повторов при ошибке: {retry}")
-        if not core.is_installer_available(data):
+        if not is_installer_available(data):
             meta_lines.append("⚠ Файл инсталлятора отсутствует")
 
         if meta_lines:
@@ -351,11 +366,33 @@ class TreeMixin:
         item = event.GetItem()
         data = self.tree_data.get(item)
         if not data:
+            if item.IsOk() and item != self.root_item:
+                category_name = self.tree.GetItemText(item)
+                menu = wx.Menu()
+                add_item = menu.Append(
+                    wx.ID_ANY,
+                    _("ctx.add_program_to_category").format(category=category_name),
+                )
+                self.Bind(
+                    wx.EVT_MENU,
+                    lambda e, cat=category_name: self._on_add_program(e, cat),
+                    add_item,
+                )
+                self.PopupMenu(menu)
+                menu.Destroy()
             return
 
         self.tree.SelectItem(item)
 
         menu = wx.Menu()
+
+        edit_item = menu.Append(wx.ID_ANY, _("ctx.edit_program"))
+        self.Bind(
+            wx.EVT_MENU,
+            lambda e, d=data, it=item: self._on_edit_program(d, it),
+            edit_item,
+        )
+        menu.AppendSeparator()
 
         only_item = menu.Append(wx.ID_ANY, _("ctx.only_this"))
         self.Bind(
@@ -398,7 +435,7 @@ class TreeMixin:
 
         menu.AppendSeparator()
 
-        prog_log_path = core.find_latest_install_log(data["name"])
+        prog_log_path = find_latest_install_log(data["name"])
         if prog_log_path:
             open_prog_log = menu.Append(wx.ID_ANY, _("ctx.open_prog_log"))
             self.Bind(
@@ -426,12 +463,11 @@ class TreeMixin:
         try:
             import shlex
 
-            from core import _normalize_cmd_paths
             cmd_clean = _normalize_cmd_paths(cmd)
             parts = shlex.split(cmd_clean, posix=(os.name != "nt"))
             if not parts:
                 return
-            script_path = core.resolve_path(parts[0])
+            script_path = resolve_path(parts[0])
             folder = os.path.dirname(script_path)
             if not os.path.isdir(folder):
                 wx.MessageBox(
@@ -517,7 +553,7 @@ class TreeMixin:
         self._set_status(_("status.uninstalling", name=name), "progress")
 
         def worker_uninstall():
-            success = core.run_uninstall(data)
+            success = run_uninstall(data)
             wx.CallAfter(self._on_uninstall_done, data, success)
 
         import threading
@@ -529,13 +565,13 @@ class TreeMixin:
         if success:
             self._set_status(_("status.uninstall_success", name=name), "success")
             # Сброс кэша
-            core.invalidate_caches()
-            core.invalidate_installed_cache(self._state)
-            self.installed_names = core.get_installed_programs(
+            invalidate_caches()
+            invalidate_installed_cache(self._state)
+            self.installed_names = get_installed_programs(
                 state_dict=self._state,
                 use_cache=getattr(self, "_installed_cache_enabled", True),
             )
-            self.status_cache = core.build_status_cache(
+            self.status_cache = build_status_cache(
                 self.programs_db, self.installed_names,
             )
             # Обновление дерева

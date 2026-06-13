@@ -23,8 +23,15 @@ import threading
 import time
 
 import config
-import core
 import profiles
+from deps import resolve_dependencies, topological_levels
+from installer import InstallWorker
+from registry import (
+    check_status,
+    get_installed_programs,
+    is_program_applicable,
+)
+from utils import setup_logging
 
 # Severity → ANSI цвета для красивого вывода в терминал
 ANSI_COLORS: dict[str, str] = {
@@ -74,16 +81,16 @@ def cmd_list_programs(programs_db: dict[str, list[dict]], installed_entries: lis
     for category, progs in programs_db.items():
         cat_printed = False
         for p in progs:
-            if not core.is_program_applicable(p):
+            if not is_program_applicable(p):
                 continue
-            status, ver = core.check_status(p, installed_entries)
+            status, ver = check_status(p, installed_entries)
             if filter_status and status != filter_status:
                 continue
             if not cat_printed:
                 print(f"\n[{category}]")
                 cat_printed = True
             marker = {"ok": "✓", "outdated": "↑", "missing": " ", "runnable": "·"}.get(status, "?")
-            ver_str = f" ({ver})" if ver else ""
+            ver_str = f" ({p['version']})" if p.get('version') else (f" ({ver})" if ver else "")
             print(f"  {marker} {p['name']}{ver_str}  — {status}")
             total += 1
 
@@ -165,13 +172,16 @@ def resolve_targets(
         if not_found:
             return ([], not_found)
 
-    # Отсекаем неприменимые на текущей ОС (напр. Windows-only .NET на Linux)
-    candidates = [p for p in candidates if core.is_program_applicable(p)]
+        # Отсекаем неприменимые на текущей ОС (напр. Windows-only .NET на Linux)
+    initial_candidates_count = len(candidates)
+    candidates = [p for p in candidates if is_program_applicable(p)]
+    if initial_candidates_count > len(candidates):
+        logging.warning("Некоторые программы отфильтрованы как неприменимые для текущей ОС.")
 
     if missing_only:
         filtered = []
         for p in candidates:
-            status, _ = core.check_status(p, installed_entries)
+            status, _ = check_status(p, installed_entries)
             if status in ("missing", "outdated"):
                 filtered.append(p)
         candidates = filtered
@@ -189,6 +199,10 @@ def resolve_profile_targets(
         return ([], [f"Профиль '{profile_name}' не найден"])
 
     found, missing = profiles.resolve_profile_programs(profile, programs_db)
+    initial_found_count = len(found)
+    found = [p for p in found if is_program_applicable(p)]
+    if initial_found_count > len(found):
+        logging.warning("Некоторые программы из профиля отфильтрованы как неприменимые для текущей ОС.")
     return (found, missing)
 
 
@@ -200,6 +214,9 @@ def install_cli(
     silent: bool,
     dry_run: bool,
     use_color: bool,
+    watchdog_interval: int | None = None,
+    watchdog_hang_threshold: int | None = None,
+    watchdog_cpu_threshold: float | None = None,
 ) -> int:
     """Запускает установку в CLI-режиме. Возвращает код выхода."""
     if not tasks:
@@ -208,10 +225,10 @@ def install_cli(
 
     # Раскрываем зависимости + отсортируем
     if parallel:
-        levels = core.topological_levels(tasks, programs_db)
+        levels = topological_levels(tasks, programs_db)
         all_tasks = [t for lvl in levels for t in lvl]
     else:
-        all_tasks = core.resolve_dependencies(tasks, programs_db)
+        all_tasks = resolve_dependencies(tasks, programs_db)
         levels = [all_tasks]
 
     # --- Dry run: только показываем план ---
@@ -260,12 +277,15 @@ def install_cli(
             final_result.update(msg)
             finished_event.set()
 
-    worker = core.InstallWorker(
+    worker = InstallWorker(
         all_tasks,
         dispatch,
         parallel=parallel,
         max_jobs=max_jobs,
         all_programs=programs_db,
+        watchdog_interval=watchdog_interval,
+        watchdog_hang_threshold=watchdog_hang_threshold,
+        watchdog_cpu_threshold=watchdog_cpu_threshold,
     )
 
     start_time = time.time()
@@ -303,15 +323,25 @@ def install_cli(
 # Точка входа
 # ====================================================================
 
-def run(args) -> int:
+def run(
+    args,
+    watchdog_interval: int | None = None,
+    watchdog_hang_threshold: int | None = None,
+    watchdog_cpu_threshold: float | None = None,
+) -> int:
     """Точка входа CLI. args — namespace из argparse."""
-    core.setup_logging()
+    setup_logging()
     logging.info(f"CLI режим: args={vars(args)}")
 
     use_color = _supports_color() and not args.no_color
 
-    programs_db = core.load_programs_from_json()
-    installed_entries = core.get_installed_programs()
+    from core_impl import load_programs_from_json
+    programs_db = load_programs_from_json()
+    # CLI всегда получает актуальные данные — инвалидируем кэш
+    from core_impl import invalidate_installed_cache
+    state_dict = {}
+    invalidate_installed_cache(state_dict)
+    installed_entries = get_installed_programs(state_dict=state_dict, use_cache=False)
 
     # --- Информационные команды ---
     if args.list:
@@ -323,6 +353,11 @@ def run(args) -> int:
         return cmd_list_profiles()
 
     # --- Установка ---
+    if args.update:
+        return cmd_linux_update(args.update, programs_db, use_color)
+    if args.uninstall:
+        return cmd_linux_uninstall(args.uninstall, programs_db, use_color)
+
     if not args.install and not args.install_profile:
         print("Ошибка: укажи --install или --install-profile", file=sys.stderr)
         return 3
@@ -352,4 +387,75 @@ def run(args) -> int:
         silent=args.silent,
         dry_run=args.dry_run,
         use_color=use_color,
+        watchdog_interval=args.watchdog_interval,
+        watchdog_hang_threshold=args.watchdog_hang_threshold,
+        watchdog_cpu_threshold=args.watchdog_cpu_threshold,
     )
+
+
+def cmd_linux_update(
+    names_arg: str,
+    programs_db: dict[str, list[dict]],
+    use_color: bool,
+) -> int:
+    import os
+    if os.name == "nt":
+        print("Команда --update доступна только на Linux.", file=sys.stderr)
+        return 3
+    from installer import run_linux_update
+    all_by_name: dict[str, dict] = {}
+    for progs in programs_db.values():
+        for p in progs:
+            all_by_name[p["name"].lower()] = p
+    names = [n.strip() for n in names_arg.split(",") if n.strip()]
+    success = 0
+    fails = 0
+    for n in names:
+        prog = all_by_name.get(n.lower())
+        if not prog:
+            print(f"Программа не найдена: {n}", file=sys.stderr)
+            fails += 1
+            continue
+        print(f"Обновление: {prog['name']}...")
+        if run_linux_update(prog):
+            print(_colorize(f"  OK: {prog['name']}", "success", use_color))
+            success += 1
+        else:
+            print(_colorize(f"  Ошибка: {prog['name']}", "error", use_color))
+            fails += 1
+    print(f"\nОбновлено: {success}, ошибок: {fails}")
+    return 0 if fails == 0 else 1
+
+
+def cmd_linux_uninstall(
+    names_arg: str,
+    programs_db: dict[str, list[dict]],
+    use_color: bool,
+) -> int:
+    import os
+    if os.name == "nt":
+        print("Команда --uninstall доступна только на Linux.", file=sys.stderr)
+        return 3
+    from installer import run_linux_uninstall
+    all_by_name: dict[str, dict] = {}
+    for progs in programs_db.values():
+        for p in progs:
+            all_by_name[p["name"].lower()] = p
+    names = [n.strip() for n in names_arg.split(",") if n.strip()]
+    success = 0
+    fails = 0
+    for n in names:
+        prog = all_by_name.get(n.lower())
+        if not prog:
+            print(f"Программа не найдена: {n}", file=sys.stderr)
+            fails += 1
+            continue
+        print(f"Удаление: {prog['name']}...")
+        if run_linux_uninstall(prog):
+            print(_colorize(f"  OK: {prog['name']}", "success", use_color))
+            success += 1
+        else:
+            print(_colorize(f"  Ошибка: {prog['name']}", "error", use_color))
+            fails += 1
+    print(f"\nУдалено: {success}, ошибок: {fails}")
+    return 0 if fails == 0 else 1
