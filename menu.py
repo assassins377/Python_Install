@@ -211,6 +211,18 @@ class MenuMixin:
         )
         self.Bind(wx.EVT_MENU, self._on_toggle_log, self._log_menu_item)
 
+        guide_item = help_menu.Append(
+            wx.ID_ANY, _("menu.add_program_guide"),
+            _("menu.add_program_guide.tooltip"),
+        )
+        self.Bind(wx.EVT_MENU, self.on_show_add_guide, guide_item)
+
+        progupd_item = help_menu.Append(
+            wx.ID_ANY, _("menu.check_program_updates"),
+            _("menu.check_program_updates.tooltip"),
+        )
+        self.Bind(wx.EVT_MENU, self.on_check_program_updates, progupd_item)
+
         help_menu.AppendSeparator()
         about_item = help_menu.Append(
             wx.ID_ABOUT, _("menu.about"), _("menu.about.tooltip"),

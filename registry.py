@@ -381,6 +381,30 @@ _PACKAGE_MANAGER_COMMANDS: dict[str, dict[str, str]] = {
 }
 
 
+# Подкоманды менеджеров пакетов, которые не являются именем пакета
+# (apt install firefox → "install" пропускаем, берём "firefox").
+_PM_SUBCOMMANDS = {
+    "install", "remove", "purge", "upgrade", "update", "refresh",
+    "reinstall", "autoremove", "erase", "list", "search", "info",
+}
+
+
+def _extract_package_from_cmd(parts: list[str], program: dict) -> str:
+    """Извлекает имя пакета из аргументов команды менеджера пакетов.
+
+    Пропускает подкоманды (install/remove/upgrade/...) и флаги (начинаются
+    с "-"), возвращая первый оставшийся аргумент. Если ничего не найдено —
+    имя программы из её записи.
+    """
+    for tok in parts[1:]:
+        if tok.startswith("-"):
+            continue
+        if tok.lower() in _PM_SUBCOMMANDS:
+            continue
+        return tok
+    return program.get("name", "")
+
+
 def get_linux_update_command(program: dict) -> str | None:
     cmd_str = program.get("cmd", "")
     if not cmd_str:
@@ -397,7 +421,7 @@ def get_linux_update_command(program: dict) -> str | None:
     pm = _PACKAGE_MANAGER_COMMANDS[base]
     if "update" not in pm:
         return None
-    pkg = parts[1] if len(parts) > 1 else program.get("name", "")
+    pkg = _extract_package_from_cmd(parts, program)
     return pm["update"].format(package=pkg, app_id=pkg)
 
 
@@ -417,5 +441,5 @@ def get_linux_uninstall_command(program: dict) -> str | None:
     pm = _PACKAGE_MANAGER_COMMANDS[base]
     if "uninstall" not in pm:
         return None
-    pkg = parts[1] if len(parts) > 1 else program.get("name", "")
+    pkg = _extract_package_from_cmd(parts, program)
     return pm["uninstall"].format(package=pkg, app_id=pkg)

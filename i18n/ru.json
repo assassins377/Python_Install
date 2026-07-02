@@ -1,7 +1,6 @@
 {
   "app.title": "Мастер установки программ",
   "app.ready": "Готов к работе.",
-
   "menu.settings": "Настройки",
   "menu.help": "Справка",
   "menu.language": "Язык",
@@ -28,11 +27,8 @@
   "menu.watcher.interval_sec": "Каждые {n} сек",
   "menu.installed_cache": "Кеш списка установленных программ",
   "menu.installed_cache.tooltip": "Ускоряет повторные запуски (читать реестр Windows реже)",
-
   "tree.file_missing": " ⚠ файл инсталлятора отсутствует",
-
   "category.all": "Все категории",
-
   "selection.none": "Ничего не выбрано",
   "selection.summary": "Выбрано: {count} (≈ {size}, ≈ {time})",
   "selection.summary_no_time": "Выбрано: {count} (≈ {size})",
@@ -50,38 +46,33 @@
   "menu.add_program": "Добавить программу...",
   "menu.file": "Файл",
   "menu.exit": "Выход",
-
   "scan.new_found": "Найдено новых программ: {count}",
   "scan.no_new": "Новых программ не найдено",
   "scan.saved": "Каталог сохранён ({count} программ)",
   "scan.save_failed": "Не удалось сохранить каталог",
   "scan.new_list_title": "Новые программы из software/",
-
   "profile.applied": "Применён профиль '{name}': выбрано {count} программ",
   "profile.missing": "В профиле '{name}' отсутствуют: {names}",
   "profile.menu_label": "{name} ({count})",
   "profile.menu_label_with_avail": "{name} ({avail}/{count} доступно)",
-
   "toolbar.search": "🔍 Поиск:",
   "toolbar.search.hint": "Введите название программы...",
   "toolbar.select_missing": "☑ Выбрать недостающее",
   "toolbar.deselect_all": "☐ Снять всё",
-
   "desc.title": "Описание",
   "desc.hint": "Наведите курсор на программу, чтобы увидеть описание.",
-
   "btn.install": "▶ Установить",
   "btn.cancel": "✖ Отменить",
   "btn.restart": "Перезапустить",
-
+  "btn.install.tooltip": "Установить выбранные программы (тихая установка)",
+  "btn.cancel.tooltip": "Прервать текущую установку",
+  "btn.restart.tooltip": "Перезапустить приложение с правами администратора",
   "admin.warning": "⚠ Запущено без прав администратора. Тихая установка может не сработать.",
-
   "ctx.only_this": "Установить только эту",
   "ctx.open_folder": "Открыть папку инсталлятора",
   "ctx.copy_name": "Копировать имя",
   "ctx.copy_cmd": "Копировать команду",
   "ctx.open_log": "Открыть лог установок",
-
   "status.installed_count": "Установлено: {installed} из {total}",
   "status.outdated_count": "устарело: {outdated}",
   "status.runnable_count": "твиков: {runnable}",
@@ -93,7 +84,6 @@
   "status.mode_parallel": "параллельный",
   "status.mode_sequential": "последовательный",
   "status.lang_changed": "Язык изменён, перезапустите приложение",
-
   "install.installing": "Установка: {name}...",
   "install.preparing": "Подготовка: {name}...",
   "install.finalizing": "Завершение: {name}...",
@@ -109,39 +99,32 @@
   "install.rollback_starting": "Откат {name}...",
   "install.rollback_ok": "Откат {name}: успешно",
   "install.rollback_failed": "Откат {name}: не удался",
-
   "tree.installed": "{name} — установлено",
   "tree.installed_ver": "{name} — установлено (v{ver})",
   "tree.outdated": "{name} — требуется обновление до v{ver}",
   "tree.runnable": "{name} — действие/твик",
   "tree.with_version": "{name} (v{ver})",
-
   "dialog.update.title": "Обновление",
   "dialog.update.available": "Доступна новая версия MInstAll (v{version}).\n\nСкачать и установить сейчас?",
   "dialog.update.latest": "У вас установлена самая актуальная версия.",
   "dialog.update.failed": "Не удалось проверить обновления:\n{error}",
   "dialog.update.error_title": "Ошибка обновления",
   "dialog.update.checksum_failed": "Контрольная сумма не совпадает. Файл повреждён или подменён.",
-
   "dialog.result.title": "Результат",
   "dialog.result.summary": "Установка завершена.\n\nУспешно: {success}\nОшибок: {fails}",
   "dialog.result.cancelled": "\nОтменено: {n}",
   "dialog.result.rolled_back": "\n\nОткачено ({n}):\n{list}",
   "dialog.result.rollback_failed": "\n\nОткат не удался ({n}):\n{list}",
   "dialog.result.reboot": "\n\nТребуется перезагрузка.",
-
   "dialog.reboot.title": "Перезагрузка",
   "dialog.reboot.question": "Установщики требуют перезагрузки компьютера.\n\nПерезагрузить сейчас?",
-
   "dialog.exit.title": "Выход",
   "dialog.exit.question": "Установка выполняется. Прервать и выйти?",
   "dialog.elevate.failed": "Не удалось перезапуститься с правами администратора.",
-
   "summary.success": "Успешно: {n}",
   "summary.errors": "Ошибок: {n}",
   "summary.cancelled": "Отменено: {n}",
   "summary.reboot_needed": "Требуется перезагрузка",
-
   "ctx.uninstall": "Удалить программу",
   "ctx.edit_program": "Редактировать программу",
   "ctx.add_program_to_category": "Добавить программу в {category}",
@@ -156,15 +139,12 @@
   "status.uninstalling": "Удаление: {name}...",
   "status.uninstall_success": "Программа {name} успешно удалена",
   "status.uninstall_failed": "Не удалось удалить программу {name}",
-
   "ctx.open_prog_log": "Открыть лог установки программы",
   "dialog.error_log.title": "Ошибка установки",
   "dialog.error_log.confirm_single": "Установка программы '{name}' завершилась с ошибкой.\n\nХотите открыть подробный лог установки?",
   "dialog.error_log.confirm_multiple": "Установка завершена с ошибками ({count} ош.).\n\nХотите открыть папку с логами инсталляторов?",
-
-  "about.description": "Универсальный мастер тихой установки программ и системных твиков.\n\nПозволяет автоматизировать развертывание рабочего окружения с поддержкой .exe, .msi, .bat, .reg и PowerShell скриптов.",
+  "about.description": "Универсальный мастер тихой установки программ и системных твиков.\n\nКросс-платформенный: Windows (.exe, .msi, .bat, .cmd, .reg, PowerShell, winget, choco) и Linux (apt/dpkg, flatpak, snap, .deb, .AppImage, bash).",
   "about.copyright": "(C) 2026 Rosa",
-
   "program_editor.title": "Редактировать программу",
   "program_editor.name": "Имя:",
   "program_editor.cmd": "Команда установки:",
@@ -186,5 +166,28 @@
   "program_editor.error_title": "Ошибка сохранения программы",
   "program_editor.program_saved": "Программа успешно сохранена.",
   "program_editor.program_added": "Новая программа успешно добавлена.",
-  "category.uncategorized": "Без категории"
+  "category.uncategorized": "Без категории",
+  "menu.add_program_guide": "Инструкция: добавление программ",
+  "menu.add_program_guide.tooltip": "Как добавить программу в каталог",
+  "guide.add_program.title": "Инструкция: добавление программ",
+  "guide.add_program.body": "Как добавить программу в каталог MInstAll.\n\n1. Меню «Файл → Добавить программу» (или ПКМ по категории → «Добавить»).\n   Заполните поля: Имя, Команда (cmd), при необходимости URL, SHA-256,\n   категорию, зависимости, команды pre/post, условия обнаружения (detect).\n\n2. Структура записи в programs.json:\n   {\n     \"name\": \"Название\",\n     \"cmd\": \"software\\Папка\\install.exe /S\",\n     \"desc\": \"Описание\",\n     \"icon\": \"icons/system.png\",\n     \"version\": \"1.0\",\n     \"os\": \"windows\",\n     \"url\": \"https://example.com/setup.exe\",\n     \"sha256\": \"abcdef...\",\n     \"depends_on\": [\"Другая программа\"],\n     \"pre_cmd\": \"...\",\n     \"post_cmd\": \"...\",\n     \"uninstall_cmd\": \"...\",\n     \"retry\": 1,\n     \"timeout\": 900,\n     \"detect\": {\n       \"registry_name\": \"...\",\n       \"path\": \"%PROGRAMFILES%\\App\\app.exe\",\n       \"min_version\": \"1.0\",\n       \"always_runnable\": false,\n       \"net_framework_release\": 528040\n     }\n   }\n\n3. Тихие флаги по расширению:\n   .exe -> /S (NSIS), /VERYSILENT (InnoSetup)\n   .msi -> msiexec /i ... /qn /norestart\n   .deb -> apt-get install -y\n   .sh / .bash -> bash\n   .AppImage -> прямой запуск\n\n4. Кросс-платформенность: укажите \"os\": \"windows\" или \"os\": \"linux\",\n   чтобы скрыть запись на чужой ОС. Разделители путей нормализуются\n   автоматически (\\ и / взаимозаменяемы).\n\n5. Безопасность: команда проверяется на метасимволы оболочки\n   (& | ; $ ` > < ^) и по расширению. Разрешены bare-команды\n   winget, choco, apt, dpkg, snap, flatpak и расширения\n   .exe .msi .bat .cmd .ps1 .reg .sh .bash .deb .appimage.\n\n6. Сохранение: «Файл → Сохранить каталог» записывает изменения в\n   programs.json. Папка software/ сканируется автоматически\n   (Сервис → Пересканировать).",
+  "about.title": "О программе MInstAll",
+  "about.version_label": "Версия",
+  "about.platform_label": "Платформа",
+  "about.license_label": "Лицензия",
+  "about.tech_label": "Технологии",
+  "about.repository_label": "Репозиторий",
+  "about.author_label": "Автор",
+  "about.close": "Закрыть",
+  "tray.tooltip": "MInstAll — мастер установки",
+  "tray.show": "Показать окно",
+  "tray.hide": "Скрыть окно",
+  "tray.install_complete": "Установка завершена",
+  "menu.check_program_updates": "Проверить обновления программ",
+  "menu.check_program_updates.tooltip": "Проверить новые версии программ каталога по url",
+  "program_updates.none": "В каталоге нет программ с url для проверки обновлений.",
+  "program_updates.checking": "Проверка обновлений ({count} программ)...",
+  "program_updates.found": "Найдено обновлений: {count}",
+  "program_updates.up_to_date": "Все программы актуальны.",
+  "program_updates.error": "Ошибка проверки обновлений"
 }

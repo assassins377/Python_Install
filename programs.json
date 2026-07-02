@@ -4,7 +4,7 @@
         "ACTIVATION": [
             {
                 "name": "Activation",
-                "cmd": "software\\Activation\\Activation-10.7.exe \\S",
+                "cmd": "software\\Activation\\Activation-10.7.exe /S",
                 "desc": "Автоматически обнаружено: Activation-10.7.exe",
                 "icon": "icons/system.png",
                 "detect": {},
@@ -14,7 +14,7 @@
         "ARCHIVERS": [
             {
                 "name": "7 Zip",
-                "cmd": "software\\Archivers\\7-Zip-26.00.exe \\S",
+                "cmd": "software\\Archivers\\7-Zip-26.00.exe /S",
                 "desc": "Автоматически обнаружено: 7-Zip-26.00.exe",
                 "icon": "icons/system.png",
                 "detect": {},
@@ -22,7 +22,7 @@
             },
             {
                 "name": "Bandizip.Pro",
-                "cmd": "software\\Archivers\\Bandizip.Pro-7.38.exe \\S",
+                "cmd": "software\\Archivers\\Bandizip.Pro-7.38.exe /S",
                 "desc": "Автоматически обнаружено: Bandizip.Pro-7.38.exe",
                 "icon": "icons/system.png",
                 "detect": {},
@@ -30,7 +30,7 @@
             },
             {
                 "name": "Bandizip.Pro",
-                "cmd": "software\\Archivers\\Bandizip.Pro-7.42.exe \\S",
+                "cmd": "software\\Archivers\\Bandizip.Pro-7.42.exe /S",
                 "desc": "Автоматически обнаружено: Bandizip.Pro-7.42.exe",
                 "icon": "icons/system.png",
                 "detect": {},
@@ -38,7 +38,7 @@
             },
             {
                 "name": "Winrar",
-                "cmd": "software\\Archivers\\WinRAR-7.20.exe \\S",
+                "cmd": "software\\Archivers\\WinRAR-7.20.exe /S",
                 "desc": "Автоматически обнаружено: WinRAR-7.20.exe",
                 "icon": "icons/system.png",
                 "detect": {},
@@ -48,7 +48,7 @@
         "CODECS": [
             {
                 "name": "K Lite Mega Codec Pack",
-                "cmd": "software\\Codecs\\K-Lite_Mega_Codec_Pack-13.8.5.exe \\S",
+                "cmd": "software\\Codecs\\K-Lite_Mega_Codec_Pack-13.8.5.exe /S",
                 "desc": "Автоматически обнаружено: K-Lite_Mega_Codec_Pack-13.8.5.exe",
                 "icon": "icons/system.png",
                 "detect": {},
@@ -56,7 +56,7 @@
             },
             {
                 "name": "K Lite Mega Codec Pack",
-                "cmd": "software\\Codecs\\K-Lite_Mega_Codec_Pack-19.6.8.exe \\S",
+                "cmd": "software\\Codecs\\K-Lite_Mega_Codec_Pack-19.6.8.exe /S",
                 "desc": "Автоматически обнаружено: K-Lite_Mega_Codec_Pack-19.6.8.exe",
                 "icon": "icons/system.png",
                 "detect": {},
@@ -66,7 +66,7 @@
         "ПРОЧЕЕ": [
             {
                 "name": "Format.Factory",
-                "cmd": "software\\Format.Factory-5.12.2.0.exe \\S",
+                "cmd": "software\\Format.Factory-5.12.2.0.exe /S",
                 "desc": "Автоматически обнаружено: Format.Factory-5.12.2.0.exe",
                 "icon": "icons/system.png",
                 "detect": {},
@@ -83,7 +83,7 @@
         "ИНТЕРНЕТ И БРАУЗЕРЫ": [
             {
                 "name": "Telegram",
-                "cmd": "software\\telegram.exe \\S",
+                "cmd": "software\\telegram.exe /S",
                 "desc": "Автоматически обнаружено: telegram.exe",
                 "icon": "icons/system.png",
                 "detect": {}

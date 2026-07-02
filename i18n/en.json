@@ -1,7 +1,6 @@
 {
   "app.title": "Software Installation Wizard",
   "app.ready": "Ready.",
-
   "menu.settings": "Settings",
   "menu.help": "Help",
   "menu.language": "Language",
@@ -28,11 +27,8 @@
   "menu.watcher.interval_sec": "Every {n} sec",
   "menu.installed_cache": "Cache installed programs list",
   "menu.installed_cache.tooltip": "Speeds up subsequent startups (read Windows registry less often)",
-
   "tree.file_missing": " ⚠ installer file is missing",
-
   "category.all": "All categories",
-
   "selection.none": "Nothing selected",
   "selection.summary": "Selected: {count} (≈ {size}, ≈ {time})",
   "selection.summary_no_time": "Selected: {count} (≈ {size})",
@@ -50,38 +46,33 @@
   "menu.add_program": "Add Program...",
   "menu.file": "File",
   "menu.exit": "Exit",
-
   "scan.new_found": "New programs found: {count}",
   "scan.no_new": "No new programs found",
   "scan.saved": "Catalog saved ({count} programs)",
   "scan.save_failed": "Failed to save catalog",
   "scan.new_list_title": "New programs from software/",
-
   "profile.applied": "Profile '{name}' applied: {count} programs selected",
   "profile.missing": "Profile '{name}' has missing programs: {names}",
   "profile.menu_label": "{name} ({count})",
   "profile.menu_label_with_avail": "{name} ({avail}/{count} available)",
-
   "toolbar.search": "🔍 Search:",
   "toolbar.search.hint": "Enter program name...",
   "toolbar.select_missing": "☑ Select missing",
   "toolbar.deselect_all": "☐ Deselect all",
-
   "desc.title": "Description",
   "desc.hint": "Hover over a program to see its description.",
-
   "btn.install": "▶ Install",
   "btn.cancel": "✖ Cancel",
   "btn.restart": "Restart",
-
+  "btn.install.tooltip": "Install the selected programs (silent install)",
+  "btn.cancel.tooltip": "Abort the running installation",
+  "btn.restart.tooltip": "Restart the app with administrator rights",
   "admin.warning": "⚠ Running without administrator rights. Silent installation may fail.",
-
   "ctx.only_this": "Install only this one",
   "ctx.open_folder": "Open installer folder",
   "ctx.copy_name": "Copy name",
   "ctx.copy_cmd": "Copy command",
   "ctx.open_log": "Open installation log",
-
   "status.installed_count": "Installed: {installed} of {total}",
   "status.outdated_count": "outdated: {outdated}",
   "status.runnable_count": "tweaks: {runnable}",
@@ -93,7 +84,6 @@
   "status.mode_parallel": "parallel",
   "status.mode_sequential": "sequential",
   "status.lang_changed": "Language changed, please restart the application",
-
   "install.installing": "Installing: {name}...",
   "install.preparing": "Preparing: {name}...",
   "install.finalizing": "Finalizing: {name}...",
@@ -109,39 +99,32 @@
   "install.rollback_starting": "Rolling back {name}...",
   "install.rollback_ok": "Rollback {name}: OK",
   "install.rollback_failed": "Rollback {name}: failed",
-
   "tree.installed": "{name} — installed",
   "tree.installed_ver": "{name} — installed (v{ver})",
   "tree.outdated": "{name} — update to v{ver}",
   "tree.runnable": "{name} — action/tweak",
   "tree.with_version": "{name} (v{ver})",
-
   "dialog.update.title": "Update",
   "dialog.update.available": "A new version of MInstAll is available (v{version}).\n\nDownload and install now?",
   "dialog.update.latest": "You have the latest version installed.",
   "dialog.update.failed": "Failed to check for updates:\n{error}",
   "dialog.update.error_title": "Update Error",
   "dialog.update.checksum_failed": "Checksum mismatch. File is corrupted or tampered.",
-
   "dialog.result.title": "Result",
   "dialog.result.summary": "Installation complete.\n\nSuccess: {success}\nErrors: {fails}",
   "dialog.result.cancelled": "\nCancelled: {n}",
   "dialog.result.rolled_back": "\n\nRolled back ({n}):\n{list}",
   "dialog.result.rollback_failed": "\n\nRollback failed ({n}):\n{list}",
   "dialog.result.reboot": "\n\nReboot required.",
-
   "dialog.reboot.title": "Reboot",
   "dialog.reboot.question": "Installers require a system reboot.\n\nReboot now?",
-
   "dialog.exit.title": "Exit",
   "dialog.exit.question": "Installation is in progress. Cancel and exit?",
   "dialog.elevate.failed": "Failed to restart with administrator rights.",
-
   "summary.success": "Success: {n}",
   "summary.errors": "Errors: {n}",
   "summary.cancelled": "Cancelled: {n}",
   "summary.reboot_needed": "Reboot required",
-
   "ctx.uninstall": "Uninstall program",
   "ctx.edit_program": "Edit Program",
   "ctx.add_program_to_category": "Add Program to {category}",
@@ -156,15 +139,12 @@
   "status.uninstalling": "Uninstalling: {name}...",
   "status.uninstall_success": "Program {name} successfully uninstalled",
   "status.uninstall_failed": "Failed to uninstall program {name}",
-
   "ctx.open_prog_log": "Open program installation log",
   "dialog.error_log.title": "Installation Error",
   "dialog.error_log.confirm_single": "Installation of program '{name}' failed with an error.\n\nDo you want to open the detailed installation log?",
   "dialog.error_log.confirm_multiple": "Installation completed with errors ({count} errors).\n\nDo you want to open the folder with installer logs?",
-
-  "about.description": "Universal silent installer for programs and system tweaks.\n\nAutomates deployment of working environment with support for .exe, .msi, .bat, .reg, and PowerShell scripts.",
+  "about.description": "Universal silent installer for programs and system tweaks.\n\nCross-platform: Windows (.exe, .msi, .bat, .cmd, .reg, PowerShell, winget, choco) and Linux (apt/dpkg, flatpak, snap, .deb, .AppImage, bash).",
   "about.copyright": "(C) 2026 Rosa",
-
   "program_editor.title": "Edit Program",
   "program_editor.name": "Name:",
   "program_editor.cmd": "Install Command:",
@@ -186,5 +166,28 @@
   "program_editor.error_title": "Error Saving Program",
   "program_editor.program_saved": "Program saved successfully.",
   "program_editor.program_added": "New program added successfully.",
-  "category.uncategorized": "Uncategorized"
+  "category.uncategorized": "Uncategorized",
+  "menu.add_program_guide": "Guide: adding programs",
+  "menu.add_program_guide.tooltip": "How to add a program to the catalog",
+  "guide.add_program.title": "Guide: adding programs",
+  "guide.add_program.body": "How to add a program to the MInstAll catalog.\n\n1. Menu \"File -> Add program\" (or right-click a category -> \"Add\").\n   Fill in: Name, Command (cmd), optionally URL, SHA-256, category,\n   dependencies, pre/post commands, detection rules (detect).\n\n2. Entry structure in programs.json:\n   {\n     \"name\": \"Name\",\n     \"cmd\": \"software\\Folder\\install.exe /S\",\n     \"desc\": \"Description\",\n     \"icon\": \"icons/system.png\",\n     \"version\": \"1.0\",\n     \"os\": \"windows\",\n     \"url\": \"https://example.com/setup.exe\",\n     \"sha256\": \"abcdef...\",\n     \"depends_on\": [\"Other program\"],\n     \"pre_cmd\": \"...\",\n     \"post_cmd\": \"...\",\n     \"uninstall_cmd\": \"...\",\n     \"retry\": 1,\n     \"timeout\": 900,\n     \"detect\": {\n       \"registry_name\": \"...\",\n       \"path\": \"%PROGRAMFILES%\\App\\app.exe\",\n       \"min_version\": \"1.0\",\n       \"always_runnable\": false,\n       \"net_framework_release\": 528040\n     }\n   }\n\n3. Silent flags by extension:\n   .exe -> /S (NSIS), /VERYSILENT (InnoSetup)\n   .msi -> msiexec /i ... /qn /norestart\n   .deb -> apt-get install -y\n   .sh / .bash -> bash\n   .AppImage -> run directly\n\n4. Cross-platform: set \"os\": \"windows\" or \"os\": \"linux\" to hide the\n   entry on the other OS. Path separators are normalized automatically\n   (\\ and / are interchangeable).\n\n5. Security: the command is checked against shell metacharacters\n   (& | ; $ ` > < ^) and by extension. Allowed bare commands:\n   winget, choco, apt, dpkg, snap, flatpak; allowed extensions:\n   .exe .msi .bat .cmd .ps1 .reg .sh .bash .deb .appimage.\n\n6. Saving: \"File -> Save catalog\" writes changes to programs.json.\n   The software/ folder is scanned automatically\n   (Tools -> Rescan).",
+  "about.title": "About MInstAll",
+  "about.version_label": "Version",
+  "about.platform_label": "Platform",
+  "about.license_label": "License",
+  "about.tech_label": "Technologies",
+  "about.repository_label": "Repository",
+  "about.author_label": "Author",
+  "about.close": "Close",
+  "tray.tooltip": "MInstAll — installer",
+  "tray.show": "Show window",
+  "tray.hide": "Hide window",
+  "tray.install_complete": "Installation complete",
+  "menu.check_program_updates": "Check for program updates",
+  "menu.check_program_updates.tooltip": "Check catalog programs for newer versions by url",
+  "program_updates.none": "No programs with url in the catalog to check.",
+  "program_updates.checking": "Checking updates ({count} programs)...",
+  "program_updates.found": "Updates found: {count}",
+  "program_updates.up_to_date": "All programs are up to date.",
+  "program_updates.error": "Error checking updates"
 }

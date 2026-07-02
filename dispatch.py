@@ -121,6 +121,15 @@ class DispatchMixin:
             ". ".join(lines) + "." if lines else "Готово.", severity,
         )
 
+        # Уведомление в системный трей о завершении установки.
+        _tray = getattr(self, "_tray", None)
+        if _tray is not None:
+            body = (". ".join(lines) + ".") if lines else i18n.t("tray.install_complete")
+            try:
+                _tray.notify(i18n.t("tray.install_complete"), body)
+            except Exception:
+                pass
+
         invalidate_caches()
         invalidate_installed_cache(self._state)
         self.installed_names = get_installed_programs(
@@ -264,6 +273,20 @@ class DispatchMixin:
             self.btn_cancel.Disable()
 
     def on_closing(self, event: wx.CloseEvent) -> None:
+        # Пункт меню "Выход" присылает CommandEvent (у него нет Veto и
+        # event.Skip() не закрывает окно), крестик окна — CloseEvent.
+        # Поэтому для меню закрываем окно явно через self.Close(), а для
+        # CloseEvent разрешаем стандартное закрытие через event.Skip().
+        if self._closing and hasattr(event, "Veto"):
+            event.Skip()
+            return
+
+        def proceed_close() -> None:
+            if hasattr(event, "Veto"):
+                event.Skip()
+            else:
+                self.Close()
+
         if self.worker and self.worker.is_alive():
             dlg = wx.MessageDialog(
                 self,
@@ -282,9 +305,12 @@ class DispatchMixin:
                 self.worker.join(timeout=5.0)
                 self._save_window_state()
                 self._save_session()
-                event.Skip()
+                proceed_close()
             else:
-                event.Veto()
+                # Veto есть только у CloseEvent (крестик окна); для пункта
+                # меню (CommandEvent) просто остаёмся в приложении.
+                if hasattr(event, "Veto"):
+                    event.Veto()
         else:
             self._closing = True
             if hasattr(self, '_watcher_timer') and self._watcher_timer.IsRunning():
@@ -293,4 +319,4 @@ class DispatchMixin:
                 self._search_timer.Stop()
             self._save_window_state()
             self._save_session()
-            event.Skip()
+            proceed_close()

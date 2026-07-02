@@ -53,6 +53,10 @@ def _build_parser() -> argparse.ArgumentParser:
         "--dry-run", action="store_true",
         help="Показать что будет установлено, не запуская",
     )
+    install_group.add_argument(
+        "--export-profile", metavar="NAME", default=None,
+        help="Сохранить разрешённый набор из --install как профиль в profiles/<NAME>.json",
+    )
 
     # --- Linux-управление ---
     linux_group = parser.add_argument_group("Linux: обновление и удаление пакетов")
@@ -86,6 +90,10 @@ def _build_parser() -> argparse.ArgumentParser:
         choices=["ok", "outdated", "missing", "runnable"],
         help="Фильтр для --list по статусу",
     )
+    info_group.add_argument(
+        "--check-program-updates", action="store_true",
+        help="Проверить наличие новых версий у программ каталога (по url)",
+    )
 
     # --- Поведение CLI ---
     behavior_group = parser.add_argument_group("Поведение CLI")
@@ -109,6 +117,14 @@ def _build_parser() -> argparse.ArgumentParser:
         "--force-elevate", action="store_true",
         help="Принудительно запросить UAC даже при запуске python-скрипта",
     )
+    behavior_group.add_argument(
+        "--json", action="store_true",
+        help="Машинно-читаемый вывод (JSON) для --list/--list-installed/--list-profiles/--check-program-updates",
+    )
+    behavior_group.add_argument(
+        "--yes", "--no-confirm", action="store_true", dest="yes",
+        help="Не спрашивать подтверждений (для автоматизации/CI)",
+    )
 
     # --- Watchdog ---
     watchdog_group = parser.add_argument_group("Watchdog (детектор зависших инсталляторов)")
@@ -117,7 +133,7 @@ def _build_parser() -> argparse.ArgumentParser:
         help=f"Интервал замера активности в секундах (default: {config.WATCHDOG_SAMPLE_INTERVAL})",
     )
     watchdog_group.add_argument(
-        "--watchdog-threshold-count", type=int, default=None,
+        "--watchdog-threshold-count", dest="watchdog_hang_threshold", type=int, default=None,
         help=f"Количество 'тихих' замеров до завершения процесса (default: {config.WATCHDOG_HANG_THRESHOLD})",
     )
     watchdog_group.add_argument(
@@ -139,6 +155,8 @@ def _is_cli_mode(args: argparse.Namespace) -> bool:
         or args.update
         or args.uninstall
         or args.no_gui
+        or args.check_program_updates
+        or args.export_profile
     )
 
 
@@ -194,6 +212,11 @@ def main() -> None:
     import i18n
     import state
     from gui import MInstAllFrame
+    from utils import setup_logging
+
+    # Логирование в GUI должно инициализироваться до первого logging.*,
+    # иначе все сообщения из GUI-потока теряются (файловый хендлер не навешен).
+    setup_logging()
 
     # Авто-elevation для GUI — UAC-диалог при старте, если ещё не админ
     if _try_elevate(args):

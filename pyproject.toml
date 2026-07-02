@@ -47,9 +47,9 @@ build = [
 minstall = "main:main"
 
 [project.urls]
-Homepage = "https://github.com/assassins377/minstall_project"
-Repository = "https://github.com/assassins377/minstall_project"
-Issues = "https://github.com/assassins377/minstall_project/issues"
+Homepage = "https://github.com/assassins377/Python_Install"
+Repository = "https://github.com/assassins377/Python_Install"
+Issues = "https://github.com/assassins377/Python_Install/issues"
 
 # =====================================================================
 # Инструменты

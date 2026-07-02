@@ -274,8 +274,68 @@ def build_cmd(cmd_str: str) -> tuple[list[str], str]:
         return ([], "")
 
     first = parts[0]
-    if os.path.splitext(first)[1] == "" and os.path.basename(first) in config.ALLOWED_BARE_COMMANDS:
+    first_lower = first.lower()
+    if os.path.splitext(first_lower)[1] == "" and os.path.basename(first_lower) in config.ALLOWED_BARE_COMMANDS:
         return (parts, "")
 
     script_path = resolve_path(parts[0])
     return dispatch_cmd(script_path, parts[1:])
+
+
+def command_needs_root(cmd_str: str) -> bool:
+    """Нужно ли для команды повышение привилегий на Linux.
+
+    True для "голых" команд менеджеров пакетов (apt/dpkg/snap/flatpak/...)
+    и для локальных .deb — без root они завершатся с ошибкой доступа.
+    """
+    if not cmd_str:
+        return False
+    try:
+        parts = shlex.split(_normalize_cmd_paths(cmd_str), posix=(os.name != "nt"))
+    except ValueError:
+        parts = _normalize_cmd_paths(cmd_str).split()
+    if not parts:
+        return False
+    first = parts[0].lower()
+    ext = os.path.splitext(first)[1]
+    _PM_BARE = {"apt", "apt-get", "dpkg", "snap", "flatpak", "pacman", "rpm", "yum", "dnf"}
+    if ext == "" and os.path.basename(first) in _PM_BARE:
+        return True
+    if ext == ".deb":
+        return True
+    return False
+
+
+def relaunch_cli_as_root() -> int | None:
+    """Перезапускает текущий CLI-процесс от root на Linux (pkexec/sudo).
+
+    Возвращает код выхода дочернего процесса, либо None, если повышение
+    не требуется (Windows / уже root) или не удалось (нет pkexec/sudo).
+    Caller должен завершиться с возвращённым кодом, не доходя до повторного
+    выполнения, иначе установка запустится дважды.
+    """
+    if os.name == "nt" or is_admin():
+        return None
+
+    if getattr(sys, "frozen", False):
+        params = [sys.executable] + sys.argv[1:]
+    else:
+        params = [sys.executable, os.path.abspath(sys.argv[0])] + sys.argv[1:]
+
+    env_vars: list[str] = []
+    for key in (
+        "DISPLAY", "XAUTHORITY", "WAYLAND_DISPLAY",
+        "DBUS_SESSION_BUS_ADDRESS", "HOME", "XDG_RUNTIME_DIR",
+        "LANG", "LC_ALL", "LANGUAGE",
+    ):
+        if key in os.environ:
+            env_vars.append(f"{key}={os.environ[key]}")
+
+    try:
+        return subprocess.call(["pkexec", "env"] + env_vars + params)
+    except Exception:
+        pass
+    try:
+        return subprocess.call(["sudo", "--"] + params)
+    except Exception:
+        return None

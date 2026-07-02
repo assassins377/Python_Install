@@ -135,7 +135,7 @@ def _watchdog_monitor(
         return
 
     silent_count = 0
-    while not stop_event.wait(config.WATCHDOG_SAMPLE_INTERVAL):
+    while not stop_event.wait(watchdog_sample_interval):
         try:
             if not proc.is_running() or proc.status() == psutil.STATUS_ZOMBIE:
                 return

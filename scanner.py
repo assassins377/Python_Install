@@ -148,10 +148,14 @@ def _make_entry(category: str, filename: str, rel_path: str, ext: str, version_p
     name = filename_to_name(filename)
     version = extract_version_from_filename(filename, custom_pattern=version_pattern)
     silent = SILENT_FLAGS.get(ext, "")
-    cmd = f"{rel_path} {silent}".strip() if silent else rel_path
+    # Нормализуем разделители пути под Windows-формат JSON, но НЕ трогаем
+    # тихой флаг (например /S у NSIS) — иначе глобальный replace("/", "\\")
+    # превращал "/S" в "\S" и ломал тихую установку на Windows.
+    path_part = rel_path.replace("/", "\\")
+    cmd = f"{path_part} {silent}".strip() if silent else path_part
     entry = {
         "name": name,
-        "cmd": cmd.replace("/", "\\"),
+        "cmd": cmd,
         "desc": f"Автоматически обнаружено: {filename}",
         "icon": "icons/system.png",
         "detect": {},
@@ -396,14 +400,17 @@ def build_catalog_from_scan(
     PRESERVE_FIELDS = (
         "name", "desc", "icon", "detect",
         "depends_on", "retry", "timeout",
-        "pre_cmd", "post_cmd", "uninstall_cmd", "version"
+        "pre_cmd", "post_cmd", "uninstall_cmd", "version",
+        "url", "sha256", "os",
     )
 
     result: dict[str, list[dict]] = {}
+    seen_keys: set[str] = set()
     for category, progs in scanned.items():
         new_progs: list[dict] = []
         for prog in progs:
             key = _cmd_key(prog.get("cmd", ""))
+            seen_keys.add(key)
             existing = by_cmd.get(key)
             if existing is not None:
                 # Берём cmd из скана (на случай если флаги поменялись),
@@ -416,5 +423,16 @@ def build_catalog_from_scan(
             else:
                 new_progs.append(prog)
         result[category] = new_progs
+
+    # Программы, устанавливаемые по url (без локального файла в software/),
+    # не попадают в скан — переносим их из existing_db целиком, иначе режим
+    # "генерировать из скана" молча удалял бы все download-only записи.
+    for cat_name, progs in existing_db.items():
+        for prog in progs:
+            if prog.get("url"):
+                key = _cmd_key(prog.get("cmd", ""))
+                if key not in seen_keys:
+                    result.setdefault(cat_name, []).append(prog)
+                    seen_keys.add(key)
 
     return result

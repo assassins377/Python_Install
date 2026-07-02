@@ -1,7 +1,6 @@
 {
   "app.title": "软件安装向导",
   "app.ready": "就绪。",
-
   "menu.settings": "设置",
   "menu.help": "帮助",
   "menu.language": "语言",
@@ -28,11 +27,8 @@
   "menu.watcher.interval_sec": "每 {n} 秒",
   "menu.installed_cache": "缓存已安装程序列表",
   "menu.installed_cache.tooltip": "加速后续启动（减少读取 Windows 注册表）",
-
   "tree.file_missing": " ⚠ 缺少安装文件",
-
   "category.all": "所有类别",
-
   "selection.none": "未选择任何程序",
   "selection.summary": "已选择：{count}（≈ {size}，≈ {time}）",
   "selection.summary_no_time": "已选择：{count}（≈ {size}）",
@@ -47,38 +43,33 @@
   "menu.rescan.tooltip": "立即在 software/ 中查找新安装程序",
   "menu.save_catalog": "保存目录…",
   "menu.save_catalog.tooltip": "将当前程序列表写回 programs.json",
-
   "scan.new_found": "发现新程序：{count}",
   "scan.no_new": "没有新程序",
   "scan.saved": "目录已保存（{count} 个程序）",
   "scan.save_failed": "保存目录失败",
   "scan.new_list_title": "software/ 中的新程序",
-
   "profile.applied": "已应用配置 '{name}'：选择了 {count} 个程序",
   "profile.missing": "配置 '{name}' 缺少程序：{names}",
   "profile.menu_label": "{name} ({count})",
   "profile.menu_label_with_avail": "{name} ({avail}/{count} 可用)",
-
   "toolbar.search": "🔍 搜索：",
   "toolbar.search.hint": "输入程序名称…",
   "toolbar.select_missing": "☑ 选择缺失项",
   "toolbar.deselect_all": "☐ 全部取消",
-
   "desc.title": "描述",
   "desc.hint": "悬停在程序上查看描述。",
-
   "btn.install": "▶ 安装",
   "btn.cancel": "✖ 取消",
   "btn.restart": "重启",
-
+  "btn.install.tooltip": "安装所选程序（静默安装）",
+  "btn.cancel.tooltip": "中止正在进行的安装",
+  "btn.restart.tooltip": "以管理员权限重启应用",
   "admin.warning": "⚠ 未以管理员身份运行。静默安装可能失败。",
-
   "ctx.only_this": "仅安装此项",
   "ctx.open_folder": "打开安装程序文件夹",
   "ctx.copy_name": "复制名称",
   "ctx.copy_cmd": "复制命令",
   "ctx.open_log": "打开安装日志",
-
   "status.installed_count": "已安装：{installed} / {total}",
   "status.outdated_count": "已过时：{outdated}",
   "status.runnable_count": "优化项：{runnable}",
@@ -90,7 +81,6 @@
   "status.mode_parallel": "并行",
   "status.mode_sequential": "顺序",
   "status.lang_changed": "语言已更改，请重启应用程序",
-
   "install.installing": "正在安装：{name}…",
   "install.preparing": "正在准备：{name}…",
   "install.finalizing": "正在收尾：{name}…",
@@ -106,39 +96,32 @@
   "install.rollback_starting": "正在回滚 {name}…",
   "install.rollback_ok": "回滚 {name}：成功",
   "install.rollback_failed": "回滚 {name}：失败",
-
   "tree.installed": "{name} — 已安装",
   "tree.installed_ver": "{name} — 已安装 (v{ver})",
   "tree.outdated": "{name} — 请更新到 v{ver}",
   "tree.runnable": "{name} — 操作/优化",
   "tree.with_version": "{name} (v{ver})",
-
   "dialog.update.title": "更新",
   "dialog.update.available": "有新版本的 MInstAll 可用 (v{version})。\n\n下载并立即安装？",
   "dialog.update.latest": "您已安装最新版本。",
   "dialog.update.failed": "检查更新失败：\n{error}",
   "dialog.update.error_title": "更新错误",
   "dialog.update.checksum_failed": "校验和不匹配。文件可能已损坏或被篡改。",
-
   "dialog.result.title": "结果",
   "dialog.result.summary": "安装完成。\n\n成功：{success}\n失败：{fails}",
   "dialog.result.cancelled": "\n已取消：{n}",
   "dialog.result.rolled_back": "\n\n已回滚 ({n})：\n{list}",
   "dialog.result.rollback_failed": "\n\n回滚失败 ({n})：\n{list}",
   "dialog.result.reboot": "\n\n需要重启。",
-
   "dialog.reboot.title": "重启",
   "dialog.reboot.question": "安装程序需要系统重启。\n\n立即重启？",
-
   "dialog.exit.title": "退出",
   "dialog.exit.question": "安装正在进行中。取消并退出？",
   "dialog.elevate.failed": "无法以管理员身份重新启动。",
-
   "summary.success": "成功：{n}",
   "summary.errors": "失败：{n}",
   "summary.cancelled": "已取消：{n}",
   "summary.reboot_needed": "需要重启",
-
   "ctx.uninstall": "卸载程序",
   "status.all_filter": "全部",
   "status.missing_filter": "未安装",
@@ -150,12 +133,33 @@
   "status.uninstalling": "正在卸载：{name}...",
   "status.uninstall_success": "程序 {name} 已成功卸载",
   "status.uninstall_failed": "卸载程序 {name} 失败",
-
   "ctx.open_prog_log": "打开程序安装日志",
   "dialog.error_log.title": "安装错误",
   "dialog.error_log.confirm_single": "程序 '{name}' 安装失败。\n\n是否打开详细安装日志？",
   "dialog.error_log.confirm_multiple": "安装完成，但有 {count} 个程序发生错误。\n\n是否打开安装日志所在的文件夹？",
-
-  "about.description": "通用的程序静默安装向导。\n\n支持 .exe、.msi、.bat、.reg 和 PowerShell 脚本，自动化部署工作环境。",
-  "about.copyright": "(C) 2026 Rosa"
+  "about.description": "通用的程序静默安装向导与系统调整工具。\n\n跨平台：Windows（.exe、.msi、.bat、.cmd、.reg、PowerShell、winget、choco）与 Linux（apt/dpkg、flatpak、snap、.deb、.AppImage、bash）。",
+  "about.copyright": "(C) 2026 Rosa",
+  "menu.add_program_guide": "指南：添加程序",
+  "menu.add_program_guide.tooltip": "如何将程序添加到目录",
+  "guide.add_program.title": "指南：添加程序",
+  "guide.add_program.body": "如何将程序添加到 MInstAll 目录。\n\n1. 菜单“文件 → 添加程序”（或在类别上右键 → “添加”）。\n   填写：名称、命令 (cmd)，可选 URL、SHA-256、类别、依赖、\n   pre/post 命令、检测条件 (detect)。\n\n2. programs.json 中的记录结构：\n   {\n     \"name\": \"名称\",\n     \"cmd\": \"software\\Folder\\install.exe /S\",\n     \"desc\": \"描述\",\n     \"icon\": \"icons/system.png\",\n     \"version\": \"1.0\",\n     \"os\": \"windows\",\n     \"url\": \"https://example.com/setup.exe\",\n     \"sha256\": \"abcdef...\",\n     \"depends_on\": [\"其他程序\"],\n     \"pre_cmd\": \"...\",\n     \"post_cmd\": \"...\",\n     \"uninstall_cmd\": \"...\",\n     \"retry\": 1,\n     \"timeout\": 900,\n     \"detect\": {\n       \"registry_name\": \"...\",\n       \"path\": \"%PROGRAMFILES%\\App\\app.exe\",\n       \"min_version\": \"1.0\",\n       \"always_runnable\": false,\n       \"net_framework_release\": 528040\n     }\n   }\n\n3. 按扩展名的静默参数：\n   .exe -> /S (NSIS), /VERYSILENT (InnoSetup)\n   .msi -> msiexec /i ... /qn /norestart\n   .deb -> apt-get install -y\n   .sh / .bash -> bash\n   .AppImage -> 直接运行\n\n4. 跨平台：设置 \"os\": \"windows\" 或 \"os\": \"linux\" 可在另一系统上隐藏\n   该条目。路径分隔符会自动归一化（\\ 与 / 可互换）。\n\n5. 安全：命令会检查 shell 元字符 (& | ; $ ` > < ^) 并按扩展名校验。\n   允许的裸命令：winget、choco、apt、dpkg、snap、flatpak；\n   允许的扩展名：.exe .msi .bat .cmd .ps1 .reg .sh .bash .deb .appimage。\n\n6. 保存：“文件 → 保存目录”会将更改写入 programs.json。\n   software/ 文件夹会自动扫描（工具 → 重新扫描）。",
+  "about.title": "关于 MInstAll",
+  "about.version_label": "版本",
+  "about.platform_label": "平台",
+  "about.license_label": "许可证",
+  "about.tech_label": "技术",
+  "about.repository_label": "仓库",
+  "about.author_label": "作者",
+  "about.close": "关闭",
+  "tray.tooltip": "MInstAll — 安装向导",
+  "tray.show": "显示窗口",
+  "tray.hide": "隐藏窗口",
+  "tray.install_complete": "安装完成",
+  "menu.check_program_updates": "检查程序更新",
+  "menu.check_program_updates.tooltip": "按 URL 检查目录程序是否有新版本",
+  "program_updates.none": "目录中没有带 URL 的程序可检查更新。",
+  "program_updates.checking": "正在检查更新（{count} 个程序）...",
+  "program_updates.found": "找到 {count} 个更新",
+  "program_updates.up_to_date": "所有程序均为最新。",
+  "program_updates.error": "检查更新出错"
 }

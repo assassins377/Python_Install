@@ -33,8 +33,12 @@ def current_arch() -> str:
 
 
 def exe_asset_name() -> str:
-    """Имя .exe ассета в Release для текущей архитектуры."""
-    return f"MInstAll_{current_arch()}.exe"
+    """Имя основного ассета в Release для текущей платформы и архитектуры.
+
+    Windows -> .exe, Linux -> .AppImage.
+    """
+    ext = ".exe" if os.name == "nt" else ".AppImage"
+    return f"MInstAll_{current_arch()}{ext}"
 
 
 def sha256_asset_name() -> str:
@@ -167,8 +171,10 @@ def download_and_update(
     callback: Callable[[dict], None] | None = None,
 ) -> bool:
     """
-    Скачивает обновление, проверяет SHA-256 (если он есть в update_info),
-    формирует BAT для атомарной замены, запускает его и завершает процесс.
+    Скачивает и применяет обновление собранного приложения.
+
+    Windows (.exe): формирует BAT для атомарной замены запущенного файла.
+    Linux (AppImage): атомарно заменяет .AppImage и перезапускает его.
     """
     def emit(msg: dict) -> None:
         if callback:
@@ -176,9 +182,16 @@ def download_and_update(
                 callback(msg)
 
     if not getattr(sys, "frozen", False):
-        emit({"type": "error", "text": "Обновление работает только для собранного .exe"})
+        emit({"type": "error", "text": "Обновление работает только для собранного приложения"})
         return False
 
+    if os.name == "nt":
+        return _apply_update_windows(update_info, emit)
+    return _apply_update_appimage(update_info, emit)
+
+
+def _apply_update_windows(update_info: dict, emit) -> bool:
+    """Замена запущенного .exe через временный BAT (см. ниже)."""
     current_exe = sys.executable
     exe_dir = os.path.dirname(current_exe)
     new_exe_path = current_exe + ".new"
@@ -286,3 +299,124 @@ del "%~f0"
             pass
         emit({"type": "error", "text": f"Ошибка: {e}"})
         return False
+
+
+def _apply_update_appimage(update_info: dict, emit) -> bool:
+    """Атомарно заменяет запущенный AppImage и перезапускает его.
+
+    AppImage при запуске монтирует свой squashfs с исходного inode, поэтому
+    замена файла по имени не ломает текущий процесс — он дорабатывает до
+    sys.exit(), а новый AppImage стартует уже с обновлённого файла.
+    """
+    appimage_path = os.environ.get("APPIMAGE") or sys.executable
+    if not (appimage_path.lower().endswith(".appimage") or os.environ.get("APPIMAGE")):
+        emit({"type": "error", "text": "Самообновление на Linux поддерживается только для AppImage"})
+        return False
+
+    new_path = appimage_path + ".new"
+    try:
+        if os.path.exists(new_path):
+            os.remove(new_path)
+    except OSError:
+        pass
+
+    try:
+        emit({"type": "status", "text": "Скачивание обновления..."})
+        actual_sha = _download_with_progress(
+            update_info["url"], new_path, update_info.get("size"), emit
+        )
+
+        expected_sha = update_info.get("sha256")
+        if expected_sha and actual_sha != expected_sha.lower():
+            logging.error(
+                f"SHA-256 не совпадает. Ожидалось {expected_sha}, получено {actual_sha}"
+            )
+            with contextlib.suppress(OSError):
+                os.remove(new_path)
+            emit({"type": "error",
+                  "text": "Контрольная сумма не совпадает. Файл повреждён или подменён."})
+            return False
+        if not expected_sha:
+            logging.warning(
+                f"SHA-256 верификация пропущена (хеш не предоставлен). Загружено: {actual_sha}"
+            )
+
+        emit({"type": "status", "text": "Применение обновления..."})
+        os.chmod(new_path, 0o755)
+
+        # Атомарная замена: старый inode остаётся смонтирован у текущего
+        # процесса, новый файл встаёт на имя .AppImage.
+        os.replace(new_path, appimage_path)
+        os.chmod(appimage_path, 0o755)
+
+        emit({"type": "done"})
+        logging.info("AppImage обновлён, перезапуск.")
+        # Перезапуск нового AppImage; текущий процесс завершается.
+        subprocess.Popen([appimage_path] + sys.argv[1:])
+        sys.exit(0)
+
+    except SystemExit:
+        raise
+    except Exception as e:
+        logging.exception(f"Ошибка при обновлении AppImage: {e}")
+        try:
+            if os.path.exists(new_path):
+                os.remove(new_path)
+        except OSError:
+            pass
+        emit({"type": "error", "text": f"Ошибка: {e}"})
+        return False
+
+
+def check_program_update(program: dict, timeout: int = 5) -> dict:
+    """Проверяет наличие новой версии у программы по её url (best-effort).
+
+    Делает HEAD-запрос, следует за редиректами и извлекает версию из итогового
+    URL (имя файла ассета). Сравнивает с program['version'] через compare_versions.
+
+    Возвращает dict: {"name", "current", "latest", "has_update", "url", "error"}.
+    Работает только для записей с url и version; иначе поле error поясняет причину.
+    """
+    from scanner import extract_version_from_filename
+    from core_impl import compare_versions
+
+    result = {
+        "name": program.get("name", ""),
+        "current": program.get("version"),
+        "latest": None,
+        "has_update": False,
+        "url": program.get("url", ""),
+        "error": None,
+    }
+    url = program.get("url")
+    cur = program.get("version")
+    if not url:
+        result["error"] = "нет url"
+        return result
+    if not cur:
+        result["error"] = "нет version в каталоге"
+        return result
+
+    final_url = None
+    try:
+        opener = _build_opener(USER_AGENT)
+        req = urllib.request.Request(url, method="HEAD", headers={"User-Agent": USER_AGENT})
+        with opener.open(req, timeout=timeout) as resp:
+            final_url = resp.geturl()
+    except Exception:
+        # ряд серверов не принимают HEAD — пробуем GET без скачивания тела
+        try:
+            opener = _build_opener(USER_AGENT)
+            req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
+            with opener.open(req, timeout=timeout) as resp:
+                final_url = resp.geturl()
+        except Exception as e:
+            result["error"] = str(e)
+            return result
+
+    fname = (final_url or "").rstrip("/").split("/")[-1]
+    latest = extract_version_from_filename(fname) or extract_version_from_filename(url)
+    result["latest"] = latest or None
+    if latest:
+        result["has_update"] = compare_versions(latest, cur) > 0
+    return result

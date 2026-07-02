@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import os
 import sys
 import threading
@@ -143,6 +144,15 @@ class MInstAllFrame(wx.Frame, MenuMixin, TreeMixin, DispatchMixin):
         if self._watcher_interval_ms > 0:
             self._watcher_timer.Start(self._watcher_interval_ms)
 
+        # Системный трей: значок, меню и уведомления о завершении установки.
+        self._tray = None
+        try:
+            import tray as _tray_mod
+            self._tray = _tray_mod.TrayIcon(self)
+        except Exception as e:
+            logging.warning(f"Не удалось создать значок в системном трее: {e}")
+            self._tray = None
+
     def init_ui(self) -> None:
         panel = wx.Panel(self)
         main_sizer = wx.BoxSizer(wx.VERTICAL)
@@ -157,6 +167,7 @@ class MInstAllFrame(wx.Frame, MenuMixin, TreeMixin, DispatchMixin):
             warn_text.SetForegroundColour(wx.Colour(133, 100, 4))
             btn_restart = wx.Button(admin_panel, label=_("btn.restart"))
             btn_restart.Bind(wx.EVT_BUTTON, self._elevate)
+            btn_restart.SetToolTip(_("btn.restart.tooltip"))
             admin_sizer.Add(
                 warn_text, 1, wx.ALIGN_CENTER_VERTICAL | wx.ALL, 10,
             )
@@ -278,10 +289,12 @@ class MInstAllFrame(wx.Frame, MenuMixin, TreeMixin, DispatchMixin):
 
         self.btn_cancel = wx.Button(panel, label=_("btn.cancel"))
         self.btn_cancel.Bind(wx.EVT_BUTTON, self.cancel_install)
+        self.btn_cancel.SetToolTip(_("btn.cancel.tooltip"))
         self.btn_cancel.Disable()
 
         self.btn_install = wx.Button(panel, label=_("btn.install"))
         self.btn_install.Bind(wx.EVT_BUTTON, self.start_install)
+        self.btn_install.SetToolTip(_("btn.install.tooltip"))
 
         progress_row_sizer.Add(
             self.btn_cancel, 0,
@@ -497,13 +510,22 @@ class MInstAllFrame(wx.Frame, MenuMixin, TreeMixin, DispatchMixin):
         # Remove old entry if editing existing
         if tree_item and tree_item.IsOk() and tree_item in self.tree_data:
             old_program_data = self.tree_data[tree_item]
-            # Find the actual old category by iterating programs_db
+            # tree_data хранит копию записи с доп. ключами (_status, _item_id),
+            # поэтому сравнение через `in`/`==` не находит оригинал в programs_db
+            # и старая запись не удалялась — получался дубликат при редактировании.
+            # Ищем оригинал по совпадению name + cmd.
+            old_name = old_program_data.get("name")
+            old_cmd = old_program_data.get("cmd")
             for cat_name, progs in list(self.programs_db.items()):
-                if old_program_data in progs:
-                    progs.remove(old_program_data)
-                    if not progs: # Remove category if it becomes empty
-                        del self.programs_db[cat_name]
-                    break
+                for i, prog in enumerate(progs):
+                    if prog.get("name") == old_name and prog.get("cmd") == old_cmd:
+                        del progs[i]
+                        if not progs:  # Remove category if it becomes empty
+                            del self.programs_db[cat_name]
+                        break
+                else:
+                    continue
+                break
 
         # Add new/updated entry to the correct category
         self.programs_db.setdefault(new_category, []).append(program_data)
@@ -521,25 +543,184 @@ class MInstAllFrame(wx.Frame, MenuMixin, TreeMixin, DispatchMixin):
 
 
     def on_about(self, event: wx.CommandEvent) -> None:
-        info = wx.adv.AboutDialogInfo()
-        info.SetName("MInstAll")
-        info.SetVersion(f"v{config.APP_VERSION}")
-        info.SetDescription(_("about.description"))
-        info.SetCopyright(_("about.copyright"))
-        info.SetWebSite(
-            "https://github.com/assassins377/Python_Install", "GitHub",
-        )
-
+        """Кастомный диалог «О программе» — информативнее системного AboutBox."""
+        dlg = wx.Dialog(self, title=_("about.title"),
+                        style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
         if os.path.exists(config.ICON_FILE):
             try:
-                bmp = wx.Bitmap(config.ICON_FILE, wx.BITMAP_TYPE_ANY)
-                img = bmp.ConvertToImage()
-                img.Rescale(64, 64, wx.IMAGE_QUALITY_HIGH)
-                info.SetIcon(wx.Icon(wx.Bitmap(img)))
+                dlg.SetIcon(wx.Icon(config.ICON_FILE, wx.BITMAP_TYPE_ANY))
             except Exception:
                 pass
 
-        wx.adv.AboutBox(info)
+        sizer = wx.BoxSizer(wx.VERTICAL)
+        top = wx.BoxSizer(wx.HORIZONTAL)
+
+        icon_bmp = None
+        if os.path.exists(config.ICON_FILE):
+            try:
+                img = wx.Bitmap(config.ICON_FILE, wx.BITMAP_TYPE_ANY).ConvertToImage()
+                img.Rescale(96, 96, wx.IMAGE_QUALITY_HIGH)
+                icon_bmp = wx.Bitmap(img)
+            except Exception:
+                icon_bmp = None
+        if icon_bmp is not None and icon_bmp.IsOk():
+            top.Add(wx.StaticBitmap(dlg, bitmap=icon_bmp), 0, wx.ALL, 15)
+
+        col = wx.BoxSizer(wx.VERTICAL)
+        name_lbl = wx.StaticText(dlg, label="MInstAll")
+        name_lbl.SetFont(
+            wx.Font(20, wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_BOLD)
+        )
+        col.Add(name_lbl, 0, wx.BOTTOM, 4)
+        ver_lbl = wx.StaticText(
+            dlg,
+            label=f"{_('about.version_label')}: v{config.APP_VERSION}   (schema v{config.CONFIG_VERSION})",
+        )
+        ver_lbl.SetForegroundColour(wx.Colour(90, 90, 90))
+        col.Add(ver_lbl, 0, wx.BOTTOM, 2)
+        col.Add(
+            wx.StaticText(
+                dlg,
+                label=f"{_('about.platform_label')}: " + ("Windows" if os.name == "nt" else "Linux"),
+            ),
+            0, wx.BOTTOM, 8,
+        )
+        top.Add(col, 1, wx.EXPAND | wx.TOP | wx.RIGHT, 15)
+        sizer.Add(top, 0, wx.EXPAND | wx.BOTTOM, 10)
+
+        desc = wx.StaticText(dlg, label=_("about.description"))
+        desc.Wrap(440)
+        sizer.Add(desc, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 15)
+
+        info = wx.FlexGridSizer(cols=2, hgap=12, vgap=6)
+        info.AddGrowableCol(1)
+
+        def lbl(text: str) -> wx.StaticText:
+            t = wx.StaticText(dlg, label=text)
+            t.SetFont(
+                wx.Font(9, wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_BOLD)
+            )
+            return t
+
+        info.Add(lbl(_("about.license_label")), 0, wx.ALIGN_CENTER_VERTICAL)
+        info.Add(wx.StaticText(dlg, label="GPL-3.0-or-later"), 0, wx.EXPAND)
+        info.Add(lbl(_("about.tech_label")), 0, wx.ALIGN_CENTER_VERTICAL)
+        info.Add(wx.StaticText(dlg, label="wxPython, psutil"), 0, wx.EXPAND)
+        info.Add(lbl(_("about.repository_label")), 0, wx.ALIGN_CENTER_VERTICAL)
+        try:
+            link = wx.adv.HyperlinkCtrl(
+                dlg, label="github.com/assassins377/Python_Install",
+                url="https://github.com/assassins377/Python_Install",
+            )
+            info.Add(link, 0, wx.EXPAND)
+        except Exception:
+            info.Add(
+                wx.StaticText(dlg, label="https://github.com/assassins377/Python_Install"),
+                0, wx.EXPAND,
+            )
+        info.Add(lbl(_("about.author_label")), 0, wx.ALIGN_CENTER_VERTICAL | wx.TOP, 6)
+        info.Add(
+            wx.StaticText(dlg, label=_("about.copyright")),
+            0, wx.EXPAND | wx.TOP, 6,
+        )
+        sizer.Add(info, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 15)
+
+        btns = dlg.CreateButtonSizer(wx.OK)
+        if btns is not None:
+            sizer.Add(btns, 0, wx.ALIGN_CENTER | wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
+
+        dlg.SetSizer(sizer)
+        sizer.Fit(dlg)
+        dlg.SetMinSize(sizer.GetMinSize())
+        try:
+            dlg.ShowModal()
+        finally:
+            dlg.Destroy()
+
+    def on_show_add_guide(self, event: wx.CommandEvent) -> None:
+        """Открывает окно с инструкцией по добавлению программ в каталог."""
+        dlg = wx.Dialog(self, title=_("guide.add_program.title"), size=(760, 600))
+        sizer = wx.BoxSizer(wx.VERTICAL)
+        txt = wx.TextCtrl(
+            dlg, style=wx.TE_MULTILINE | wx.TE_READONLY | wx.TE_DONTWRAP,
+        )
+        txt.SetFont(
+            wx.Font(9, wx.FONTFAMILY_TELETYPE, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_NORMAL)
+        )
+        txt.SetValue(_("guide.add_program.body"))
+        sizer.Add(txt, 1, wx.EXPAND | wx.ALL, 10)
+        btns = dlg.CreateButtonSizer(wx.OK)
+        sizer.Add(btns, 0, wx.EXPAND | wx.ALL, 10)
+        dlg.SetSizer(sizer)
+        try:
+            dlg.ShowModal()
+        finally:
+            dlg.Destroy()
+
+    def on_check_program_updates(self, event: wx.CommandEvent) -> None:
+        """Проверяет новые версии программ каталога по url (в фоне)."""
+        from updater import check_program_update
+
+        candidates = [
+            p for progs in self.programs_db.values() for p in progs if p.get("url")
+        ]
+        if not candidates:
+            wx.MessageBox(
+                _("program_updates.none"),
+                _("menu.check_program_updates"),
+                wx.OK | wx.ICON_INFORMATION,
+            )
+            return
+
+        self._set_status(
+            _("program_updates.checking", count=len(candidates)), "progress",
+        )
+        self.btn_install.Disable()
+
+        def worker() -> None:
+            results = []
+            for p in candidates:
+                try:
+                    results.append(check_program_update(p))
+                except Exception as e:
+                    results.append({
+                        "name": p.get("name", ""),
+                        "current": p.get("version"),
+                        "latest": None,
+                        "has_update": False,
+                        "url": p.get("url", ""),
+                        "error": str(e),
+                    })
+            wx.CallAfter(self._on_program_updates_done, results)
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _on_program_updates_done(self, results: list[dict]) -> None:
+        self.btn_install.Enable()
+        updates = [r for r in results if r["has_update"]]
+        errors = [r for r in results if r["error"]]
+        if updates:
+            body = "\n".join(
+                f"{r['name']}: {r['current']} -> {r['latest']}" for r in updates
+            )
+            self._set_status(_("program_updates.found", count=len(updates)), "success")
+            wx.MessageBox(
+                body, _("menu.check_program_updates"),
+                wx.OK | wx.ICON_INFORMATION,
+            )
+        elif errors:
+            self._set_status(_("program_updates.error"), "warn")
+            wx.MessageBox(
+                "\n".join(f"{r['name']}: {r['error']}" for r in errors),
+                _("program_updates.error"), wx.OK | wx.ICON_WARNING,
+            )
+        else:
+            self._set_status(_("program_updates.up_to_date"), "success")
+            wx.MessageBox(
+                _("program_updates.up_to_date"),
+                _("menu.check_program_updates"),
+                wx.OK | wx.ICON_INFORMATION,
+            )
 
     def on_check_update(self, event: wx.CommandEvent) -> None:
         import updater
