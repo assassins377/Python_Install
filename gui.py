@@ -177,39 +177,33 @@ class MInstAllFrame(wx.Frame, MenuMixin, TreeMixin, DispatchMixin):
             admin_panel.SetSizer(admin_sizer)
             main_sizer.Add(admin_panel, 0, wx.EXPAND | wx.BOTTOM, 10)
 
-        search_sizer = wx.BoxSizer(wx.HORIZONTAL)
-        search_sizer.Add(
+        toolbar_sizer = wx.BoxSizer(wx.HORIZONTAL)
+        toolbar_sizer.Add(
             wx.StaticText(panel, label=_("toolbar.search")),
             0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 5,
         )
         self.search_ctrl = wx.TextCtrl(panel)
         self.search_ctrl.SetHint(_("toolbar.search.hint"))
         self.search_ctrl.Bind(wx.EVT_TEXT, self._on_search_input)
-        search_sizer.Add(self.search_ctrl, 1, wx.EXPAND)
-        main_sizer.Add(
-            search_sizer, 0,
-            wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 10,
-        )
+        toolbar_sizer.Add(self.search_ctrl, 1, wx.EXPAND | wx.RIGHT, 10)
 
-        btn_sizer = wx.BoxSizer(wx.HORIZONTAL)
-        btn_sizer.AddStretchSpacer()
         cat_label = wx.StaticText(panel, label="📂")
-        btn_sizer.Add(cat_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT | wx.RIGHT, 5)
+        toolbar_sizer.Add(cat_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT | wx.RIGHT, 5)
         self.category_combo = wx.ComboBox(
             panel, style=wx.CB_READONLY, size=(180, -1),
         )
         self.category_combo.Bind(wx.EVT_COMBOBOX, self._on_category_changed)
-        btn_sizer.Add(self.category_combo, 0, wx.ALIGN_CENTER_VERTICAL)
+        toolbar_sizer.Add(self.category_combo, 0, wx.ALIGN_CENTER_VERTICAL)
 
         status_label = wx.StaticText(panel, label="🏷️")
-        btn_sizer.Add(status_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT | wx.RIGHT, 5)
+        toolbar_sizer.Add(status_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT | wx.RIGHT, 5)
         self.status_combo = wx.ComboBox(
             panel, style=wx.CB_READONLY, size=(150, -1),
         )
         self.status_combo.Bind(wx.EVT_COMBOBOX, self._on_status_filter_changed)
-        btn_sizer.Add(self.status_combo, 0, wx.ALIGN_CENTER_VERTICAL)
+        toolbar_sizer.Add(self.status_combo, 0, wx.ALIGN_CENTER_VERTICAL)
 
-        main_sizer.Add(btn_sizer, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
+        main_sizer.Add(toolbar_sizer, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
 
         self._splitter = wx.SplitterWindow(
             panel, style=wx.SP_LIVE_UPDATE | wx.SP_3DSASH,
