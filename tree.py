@@ -357,10 +357,11 @@ class TreeMixin:
         self._search_timer.StartOnce(config.SEARCH_DEBOUNCE_MS)
 
     def _on_search_timer(self, event: wx.TimerEvent) -> None:
-        self.populate_tree(
-            self.search_ctrl.GetValue(),
-            category=getattr(self, '_active_category', ''),
-        )
+        filter_text = self.search_ctrl.GetValue()
+        if filter_text.strip():
+            self.populate_tree(filter_text, category="", status_filter=getattr(self, "_active_status_filter", ""))
+        else:
+            self.populate_tree("", category=getattr(self, "_active_category", ""), status_filter=getattr(self, "_active_status_filter", ""))
 
     def _on_tree_right_click(self, event: wx.TreeEvent) -> None:
         item = event.GetItem()
