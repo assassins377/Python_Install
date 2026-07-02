@@ -12,17 +12,17 @@ import urllib.request
 import config
 
 
-def setup_logging() -> None:
+def setup_logging(level: int = logging.INFO) -> None:
     try:
         logging.basicConfig(
             filename=config.LOG_FILE,
-            level=logging.INFO,
+            level=level,
             format="%(asctime)s [%(levelname)s] %(message)s",
             encoding="utf-8",
         )
     except TypeError:
         _logger = logging.getLogger()
-        _logger.setLevel(logging.INFO)
+        _logger.setLevel(level)
         _fh = logging.FileHandler(config.LOG_FILE)
         _fh.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(message)s"))
         _logger.addHandler(_fh)
@@ -160,10 +160,15 @@ def _build_opener(user_agent: str) -> urllib.request.OpenerDirector:
             return super().redirect_request(
                 req, fp, code, msg, headers, newurl,
             )
-    return urllib.request.build_opener(
-        urllib.request.HTTPCookieProcessor(),
-        _LoggingRedirectHandler(),
-    )
+
+    handlers: list = [urllib.request.HTTPCookieProcessor(), _LoggingRedirectHandler()]
+
+    proxy_url = os.environ.get("HTTPS_PROXY") or os.environ.get("https_proxy") or os.environ.get("HTTP_PROXY") or os.environ.get("http_proxy")
+    if proxy_url:
+        handlers.append(urllib.request.ProxyHandler({"http": proxy_url, "https": proxy_url}))
+        logging.info(f"Используется прокси: {proxy_url}")
+
+    return urllib.request.build_opener(*handlers)
 
 
 def _download_file(

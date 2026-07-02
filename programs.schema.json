@@ -1,0 +1,104 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "MInstAll Program Catalog",
+  "description": "Schema for programs.json — the MInstAll program catalog",
+  "type": "object",
+  "required": ["_version", "categories"],
+  "properties": {
+    "_version": {
+      "type": "integer",
+      "description": "Schema version (currently 2)"
+    },
+    "categories": {
+      "type": "object",
+      "description": "Category name → list of programs",
+      "additionalProperties": {
+        "type": "array",
+        "items": {
+          "$ref": "#/$defs/program"
+        }
+      }
+    }
+  },
+  "$defs": {
+    "program": {
+      "type": "object",
+      "required": ["name", "cmd"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Display name of the program"
+        },
+        "cmd": {
+          "type": "string",
+          "description": "Install command (relative to SCRIPT_DIR)"
+        },
+        "desc": {
+          "type": "string",
+          "description": "Description shown in the GUI"
+        },
+        "icon": {
+          "type": "string",
+          "description": "Path to icon file (e.g. icons/system.png)"
+        },
+        "version": {
+          "type": "string",
+          "description": "Version string for comparison"
+        },
+        "os": {
+          "type": "string",
+          "enum": ["windows", "linux", "any"],
+          "description": "Target OS filter"
+        },
+        "url": {
+          "type": "string",
+          "format": "uri",
+          "description": "Download URL for the installer"
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[a-fA-F0-9]{64}$",
+          "description": "SHA-256 hash of the downloaded file"
+        },
+        "depends_on": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Names of programs that must be installed first"
+        },
+        "pre_cmd": {
+          "type": "string",
+          "description": "Command to run before installation"
+        },
+        "post_cmd": {
+          "type": "string",
+          "description": "Command to run after installation"
+        },
+        "uninstall_cmd": {
+          "type": "string",
+          "description": "Command to uninstall the program"
+        },
+        "retry": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Number of retry attempts on failure"
+        },
+        "timeout": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Timeout in seconds for the install process"
+        },
+        "detect": {
+          "type": "object",
+          "description": "Detection rules for installed status",
+          "properties": {
+            "registry_name": { "type": "string" },
+            "path": { "type": "string" },
+            "min_version": { "type": "string" },
+            "always_runnable": { "type": "boolean" },
+            "net_framework_release": { "type": "integer" }
+          }
+        }
+      }
+    }
+  }
+}

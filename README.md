@@ -1,5 +1,11 @@
 # MInstAll
 
+[![Build](https://github.com/assassins377/Python_Install/actions/workflows/build.yml/badge.svg)](https://github.com/assassins377/Python_Install/actions/workflows/build.yml)
+[![License](https://img.shields.io/badge/license-GPLv3-blue)](LICENSE)
+[![Python](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org/)
+[![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux-lightgrey)](#)
+[![Release](https://img.shields.io/github/v/release/assassins377/Python_Install)](https://github.com/assassins377/Python_Install/releases/latest)
+
 [English](#english) | [Русский](#русский) | [简体中文](#简体中文)
 
 ---

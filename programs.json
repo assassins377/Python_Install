@@ -22,14 +22,6 @@
             },
             {
                 "name": "Bandizip.Pro",
-                "cmd": "software\\Archivers\\Bandizip.Pro-7.38.exe /S",
-                "desc": "Автоматически обнаружено: Bandizip.Pro-7.38.exe",
-                "icon": "icons/system.png",
-                "detect": {},
-                "version": "7.38"
-            },
-            {
-                "name": "Bandizip.Pro",
                 "cmd": "software\\Archivers\\Bandizip.Pro-7.42.exe /S",
                 "desc": "Автоматически обнаружено: Bandizip.Pro-7.42.exe",
                 "icon": "icons/system.png",
@@ -46,14 +38,6 @@
             }
         ],
         "CODECS": [
-            {
-                "name": "K Lite Mega Codec Pack",
-                "cmd": "software\\Codecs\\K-Lite_Mega_Codec_Pack-13.8.5.exe /S",
-                "desc": "Автоматически обнаружено: K-Lite_Mega_Codec_Pack-13.8.5.exe",
-                "icon": "icons/system.png",
-                "detect": {},
-                "version": "13.8.5"
-            },
             {
                 "name": "K Lite Mega Codec Pack",
                 "cmd": "software\\Codecs\\K-Lite_Mega_Codec_Pack-19.6.8.exe /S",

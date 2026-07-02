@@ -20,6 +20,7 @@ import fnmatch
 import json
 import logging
 import re
+import signal
 import sys
 import threading
 import time
@@ -162,6 +163,22 @@ def cmd_list_installed(installed_entries: list[tuple[str, str]],
         print(f"{it['name']}\t{it['version']}" if it["version"] else it["name"])
     print(f"\nВсего: {len(items)}", file=sys.stderr)
     return 0
+
+
+def cmd_export_installed(installed_entries: list[tuple[str, str]],
+                         output_path: str | None = None) -> int:
+    """Экспорт списка установленных программ в JSON-файл."""
+    items = [{"name": n, "version": v} for n, v in sorted(installed_entries)]
+    if not output_path:
+        output_path = "installed_programs.json"
+    try:
+        with open(output_path, "w", encoding="utf-8") as f:
+            json.dump(items, f, ensure_ascii=False, indent=2)
+        print(f"Список установленных программ сохранён: {output_path} ({len(items)} записей)")
+        return 0
+    except Exception as e:
+        print(f"Ошибка сохранения: {e}", file=sys.stderr)
+        return 3
 
 
 def cmd_list_profiles(json_output: bool = False) -> int:
@@ -417,10 +434,18 @@ def install_cli(
         watchdog_cpu_threshold=watchdog_cpu_threshold,
     )
 
+    def _sig_handler(signum, frame):
+        print("\n\n⚠ Прерывание по сигналу, отменяем...", file=sys.stderr)
+        worker.stop()
+        worker.join(timeout=10.0)
+        sys.exit(2)
+
+    old_sigint = signal.signal(signal.SIGINT, _sig_handler)
+    old_sigterm = signal.signal(signal.SIGTERM, _sig_handler)
+
     start_time = time.time()
     try:
         worker.start()
-        # Ждём пока worker не завершит работу, реагируем на Ctrl+C
         while not finished_event.wait(0.5):
             if not worker.is_alive():
                 break
@@ -429,6 +454,9 @@ def install_cli(
         worker.stop()
         worker.join(timeout=10.0)
         return 2
+    finally:
+        signal.signal(signal.SIGINT, old_sigint)
+        signal.signal(signal.SIGTERM, old_sigterm)
 
     duration = time.time() - start_time
 
@@ -459,7 +487,9 @@ def run(
     watchdog_cpu_threshold: float | None = None,
 ) -> int:
     """Точка входа CLI. args — namespace из argparse."""
-    setup_logging()
+    import logging as _logging
+    log_level = _logging.DEBUG if getattr(args, "debug", False) else (_logging.INFO if not getattr(args, "verbose", False) else _logging.DEBUG)
+    setup_logging(level=log_level)
     logging.info(f"CLI режим: args={vars(args)}")
 
     use_color = _supports_color() and not args.no_color
@@ -483,6 +513,8 @@ def run(
         return cmd_list_profiles(json_output=args.json)
     if args.check_program_updates:
         return cmd_check_program_updates(programs_db, json_output=args.json)
+    if args.export_installed:
+        return cmd_export_installed(installed_entries, output_path=args.export_installed)
 
     # --- Установка ---
     if args.update:

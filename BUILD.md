@@ -1,6 +1,104 @@
-# Сборка MInstAll
+# Building MInstAll
 
-Инструкция по компиляции MInstAll из исходников для Windows 7/10/11 и Linux.
+[English](#english) | [Русский](#русский)
+
+---
+
+## English
+
+Instructions for compiling MInstAll from source for Windows 7/10/11 and Linux.
+
+### Requirements
+
+| Tool | Minimum | Recommended |
+|---|---|---|
+| Python | 3.10 | 3.11 or 3.12 |
+| pip | 23.0 | latest |
+| Git | any | latest |
+| Free space | 500 MB | 1 GB |
+| RAM for build | 2 GB | 4 GB |
+
+**Main app runs on:** Windows 7+ (32-bit and 64-bit), Linux with GTK3.
+**`.exe` build:** Windows only (PyInstaller cross-compiles for the target OS).
+
+### Windows 10 / 11
+
+```powershell
+git clone https://github.com/assassins377/Python_Install.git
+cd Python_Install
+python -m venv .venv
+.venv\Scripts\activate
+pip install --upgrade pip
+pip install -r requirements.txt
+python main.py
+```
+
+Build `.exe`:
+```powershell
+pip install pyinstaller
+pyinstaller --clean --noconsole --onefile --uac-admin --name MInstAll_x64 --icon=icons/system.png main.py
+```
+
+### Linux (Ubuntu / Debian)
+
+```bash
+sudo apt install -y python3.10 python3.10-venv python3-pip \
+    libgtk-3-dev libwebkit2gtk-4.0-dev libnotify-dev \
+    libsdl2-dev libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev \
+    freeglut3-dev libpng-dev libjpeg-dev build-essential
+
+git clone https://github.com/assassins377/Python_Install.git
+cd Python_Install
+python3.10 -m venv .venv
+source .venv/bin/activate
+pip install --upgrade pip
+pip install -r requirements.txt
+python main.py
+```
+
+### Linux (Fedora / RHEL)
+
+```bash
+sudo dnf install -y python3.10 python3-pip python3-virtualenv \
+    gtk3-devel webkit2gtk3-devel libnotify-devel SDL2-devel \
+    gstreamer1-devel gstreamer1-plugins-base-devel \
+    freeglut-devel libpng-devel libjpeg-turbo-devel gcc gcc-c++ make
+```
+
+### Linux (Arch / Manjaro)
+
+```bash
+sudo pacman -S --needed python python-pip python-virtualenv \
+    gtk3 webkit2gtk libnotify sdl2 gstreamer gst-plugins-base \
+    freeglut libpng libjpeg-turbo base-devel
+```
+
+### Testing
+
+```bash
+python -m pytest tests/ -v
+```
+
+### CI Build (GitHub Actions)
+
+Push a tag to trigger automatic build and release:
+
+```bash
+git tag v2.1.0
+git push origin v2.1.0
+```
+
+CI will: run tests → build x86 + x64 `.exe` → create SHA-256 → publish GitHub Release.
+
+### Common Issues
+
+- **`ModuleNotFoundError: No module named 'wx'`** — activate venv or reinstall wxPython
+- **Slow `.exe` startup** — build without `--onefile` for instant launch
+- **Antivirus removes `.exe`** — add `dist/` to exclusions; publish via GitHub Releases for reputation
+
+---
+
+## Русский
 
 ---
 

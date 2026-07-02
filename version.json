@@ -1,7 +1,6 @@
 {
   "version": "2.2.1",
   "url": "https://github.com/assassins377/Python_Install/releases/download/v2.2.1/MInstAll_x86.exe",
-  "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
   "size": 0,
   "notes": "Linux-порт: детекция flatpak/snap, скрытие Windows-only компонентов, фиксы установки и сборки"
 }

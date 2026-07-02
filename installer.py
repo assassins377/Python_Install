@@ -16,6 +16,22 @@ import config
 import deps
 from utils import _download_file, _normalize_cmd_paths, build_cmd, dispatch_cmd
 
+
+def check_disk_space(min_free_mb: int = 500) -> tuple[bool, str]:
+    """Проверяет свободное место на диске с SCRIPT_DIR.
+
+    Возвращает (достаточно_ли, сообщение).
+    """
+    try:
+        import shutil
+        usage = shutil.disk_usage(config.SCRIPT_DIR)
+        free_mb = usage.free // (1024 * 1024)
+        if free_mb < min_free_mb:
+            return False, f"Недостаточно места на диске: {free_mb} МБ свободно (нужно минимум {min_free_mb} МБ)"
+        return True, f"Свободно {free_mb} МБ на диске"
+    except Exception as e:
+        return True, f"Не удалось проверить место на диске: {e}"
+
 RETRYABLE_EXIT_CODES = {
     1618,
     1603,
@@ -720,6 +736,13 @@ class InstallWorker(threading.Thread):
 
     def run(self) -> None:
         try:
+            ok, msg = check_disk_space()
+            if not ok:
+                self._emit(type="progress", text=msg, severity="error")
+                self.fail_count = self.total_tasks
+                return
+            logging.info(msg)
+
             if self.parallel and self.total_tasks > 1:
                 self._run_parallel()
             else:

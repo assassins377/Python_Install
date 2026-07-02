@@ -94,6 +94,10 @@ def _build_parser() -> argparse.ArgumentParser:
         "--check-program-updates", action="store_true",
         help="Проверить наличие новых версий у программ каталога (по url)",
     )
+    info_group.add_argument(
+        "--export-installed", metavar="PATH", nargs="?", const="installed_programs.json",
+        help="Экспортировать список установленных программ в JSON-файл",
+    )
 
     # --- Поведение CLI ---
     behavior_group = parser.add_argument_group("Поведение CLI")
@@ -124,6 +128,14 @@ def _build_parser() -> argparse.ArgumentParser:
     behavior_group.add_argument(
         "--yes", "--no-confirm", action="store_true", dest="yes",
         help="Не спрашивать подтверждений (для автоматизации/CI)",
+    )
+    behavior_group.add_argument(
+        "--verbose", action="store_true",
+        help="Подробный вывод (DEBUG-уровень логирования)",
+    )
+    behavior_group.add_argument(
+        "--debug", action="store_true",
+        help="Максимально подробный вывод (DEBUG-уровень + трассировка)",
     )
 
     # --- Watchdog ---
@@ -157,6 +169,7 @@ def _is_cli_mode(args: argparse.Namespace) -> bool:
         or args.no_gui
         or args.check_program_updates
         or args.export_profile
+        or args.export_installed
     )
 
 
@@ -214,9 +227,8 @@ def main() -> None:
     from gui import MInstAllFrame
     from utils import setup_logging
 
-    # Логирование в GUI должно инициализироваться до первого logging.*,
-    # иначе все сообщения из GUI-потока теряются (файловый хендлер не навешен).
-    setup_logging()
+    log_level = logging.DEBUG if args.debug else (logging.INFO if not args.verbose else logging.DEBUG)
+    setup_logging(level=log_level)
 
     # Авто-elevation для GUI — UAC-диалог при старте, если ещё не админ
     if _try_elevate(args):
