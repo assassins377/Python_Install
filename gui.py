@@ -153,6 +153,17 @@ class MInstAllFrame(wx.Frame, MenuMixin, TreeMixin, DispatchMixin):
             logging.warning(f"Не удалось создать значок в системном трее: {e}")
             self._tray = None
 
+    def _on_search_input(self, event: wx.CommandEvent) -> None:
+        self._search_timer.Stop()
+        self._search_timer.StartOnce(config.SEARCH_DEBOUNCE_MS)
+
+    def _on_search_timer(self, event: wx.TimerEvent) -> None:
+        filter_text = self.search_ctrl.GetValue()
+        if filter_text.strip():
+            self.populate_tree(filter_text, category="", status_filter=getattr(self, "_active_status_filter", ""))
+        else:
+            self.populate_tree("", category=getattr(self, "_active_category", ""), status_filter=getattr(self, "_active_status_filter", ""))
+
     def init_ui(self) -> None:
         panel = wx.Panel(self)
         main_sizer = wx.BoxSizer(wx.VERTICAL)
