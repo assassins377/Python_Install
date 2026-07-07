@@ -99,13 +99,13 @@ jobs:
         echo "tag=$TAG" >> "$GITHUB_OUTPUT"
 
     - name: Скачиваем артефакты x86
-      uses: actions/download-artifact@v4
+      uses: actions/download-artifact@v8
       with:
         name: MInstAll_x86_artifacts
         path: dist/
 
     - name: Скачиваем артефакты x64
-      uses: actions/download-artifact@v4
+      uses: actions/download-artifact@v8
       with:
         name: MInstAll_x64_artifacts
         path: dist/
