@@ -11,10 +11,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - name: Скачиваем код
-      uses: actions/checkout@v4
+      uses: actions/checkout@v7
 
     - name: Устанавливаем Python 3.10
-      uses: actions/setup-python@v5
+      uses: actions/setup-python@v6
       with:
         python-version: '3.10'
 
@@ -30,10 +30,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - name: Скачиваем код
-      uses: actions/checkout@v4
+      uses: actions/checkout@v7
 
     - name: Устанавливаем Python 3.10
-      uses: actions/setup-python@v5
+      uses: actions/setup-python@v6
       with:
         python-version: '3.10'
 
@@ -43,16 +43,18 @@ jobs:
         pip install mypy
 
     - name: Проверяем типами
-      run: mypy --ignore-missing-imports .
+      run: |
+        mypy --ignore-missing-imports .
+        mypy --ignore-missing-imports --platform win32 .
 
   security:
     runs-on: ubuntu-latest
     steps:
     - name: Скачиваем код
-      uses: actions/checkout@v4
+      uses: actions/checkout@v7
 
     - name: Устанавливаем Python 3.10
-      uses: actions/setup-python@v5
+      uses: actions/setup-python@v6
       with:
         python-version: '3.10'
 
@@ -75,10 +77,10 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
     - name: Скачиваем код
-      uses: actions/checkout@v4
+      uses: actions/checkout@v7
 
     - name: Устанавливаем Python 3.10
-      uses: actions/setup-python@v5
+      uses: actions/setup-python@v6
       with:
         python-version: '3.10'
 
@@ -95,7 +97,7 @@ jobs:
 
     - name: Загружаем отчёт о покрытии (Linux)
       if: matrix.os == 'ubuntu-latest'
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
         name: coverage-xml
         path: coverage.xml
@@ -114,10 +116,10 @@ jobs:
     name: Build ${{ matrix.arch }}
     steps:
     - name: Скачиваем код
-      uses: actions/checkout@v4
+      uses: actions/checkout@v7
 
     - name: Устанавливаем ${{ matrix.arch }} Python 3.10
-      uses: actions/setup-python@v5
+      uses: actions/setup-python@v6
       with:
         python-version: '3.10'
         architecture: ${{ matrix.python-arch }}
@@ -133,7 +135,26 @@ jobs:
         pyinstaller --clean --noconsole --onefile --uac-admin --name MInstAll_${{ matrix.arch }} --icon=icons/system.png main.py
 
     - name: Загружаем артефакт
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
         name: MInstAll_${{ matrix.arch }}_Executable
         path: dist/MInstAll_${{ matrix.arch }}.exe
+        if-no-files-found: error
+
+  verify-artifacts:
+    # Exercise the release upload/download path on PRs without publishing a release.
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/download-artifact@v8
+      with:
+        name: MInstAll_x86_Executable
+        path: dist/
+    - uses: actions/download-artifact@v8
+      with:
+        name: MInstAll_x64_Executable
+        path: dist/
+    - name: Проверяем оба скачанных файла
+      run: |
+        test -s dist/MInstAll_x86.exe
+        test -s dist/MInstAll_x64.exe
