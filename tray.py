@@ -5,6 +5,7 @@
 """
 from __future__ import annotations
 
+import contextlib
 import os
 
 import wx
@@ -36,10 +37,8 @@ class TrayIcon(wx.adv.TaskBarIcon):
             except Exception:
                 pass
         # Фолбэк: пустая иконка, чтобы трей всё равно появился.
-        try:
+        with contextlib.suppress(Exception):
             self.SetIcon(wx.Icon(wx.Bitmap(16, 16)), tip)
-        except Exception:
-            pass
 
     # --- Меню по правому клику ---
     def CreatePopupMenu(self) -> wx.Menu:
@@ -75,25 +74,19 @@ class TrayIcon(wx.adv.TaskBarIcon):
         else:
             f.Show()
             f.Raise()
-            try:
+            with contextlib.suppress(Exception):
                 f.Iconize(False)
-            except Exception:
-                pass
 
     def _on_exit(self, event: wx.CommandEvent) -> None:
         # Инициируем штатное закрытие окна (on_closing сохранит состояние).
         self._frame.Close()
 
     def _on_frame_destroy(self, event: wx.WindowDestroyEvent) -> None:
-        try:
+        with contextlib.suppress(Exception):
             self.RemoveIcon()
-        except Exception:
-            pass
         event.Skip()
 
     def notify(self, title: str, message: str) -> None:
         """Показывает всплывающее уведомление в трее (если поддерживается)."""
-        try:
+        with contextlib.suppress(Exception):
             self.ShowBalloon(title, message)
-        except Exception:
-            pass

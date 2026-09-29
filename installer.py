@@ -10,6 +10,7 @@ import subprocess
 import tempfile
 import threading
 import time
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 
 import config
@@ -77,7 +78,7 @@ def download_installer(
     url: str,
     dest_dir: str,
     expected_sha256: str | None = None,
-    progress_cb: callable | None = None,
+    progress_cb: Callable[[dict], None] | None = None,
 ) -> str:
     import urllib.parse
 
@@ -209,12 +210,12 @@ def run_hook(cmd_str: str, hook_name: str = "hook", task_name: str = "") -> bool
         return False
 
     try:
-        _popen_kw: dict = dict(
-            cwd=(os.path.dirname(script_path) if script_path else None)
+        _popen_kw: dict = {
+            "cwd": (os.path.dirname(script_path) if script_path else None)
             or config.SCRIPT_DIR,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
+            "stdout": subprocess.DEVNULL,
+            "stderr": subprocess.DEVNULL,
+        }
         if config.CREATE_NO_WINDOW:
             _popen_kw["creationflags"] = config.CREATE_NO_WINDOW
         proc = subprocess.Popen(cmd_args, **_popen_kw)
@@ -251,12 +252,12 @@ def run_uninstall(task: dict) -> bool:
         return False
 
     try:
-        _uninstall_kw: dict = dict(
-            cwd=(os.path.dirname(script_path) if script_path else None)
+        _uninstall_kw: dict = {
+            "cwd": (os.path.dirname(script_path) if script_path else None)
             or config.SCRIPT_DIR,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
+            "stdout": subprocess.DEVNULL,
+            "stderr": subprocess.DEVNULL,
+        }
         if config.CREATE_NO_WINDOW:
             _uninstall_kw["creationflags"] = config.CREATE_NO_WINDOW
         proc = subprocess.Popen(cmd_args, **_uninstall_kw)
@@ -278,7 +279,7 @@ class InstallWorker(threading.Thread):
     def __init__(
         self,
         tasks: list[dict],
-        dispatch: callable,
+        dispatch: Callable[[dict], None],
         parallel: bool = False,
         max_jobs: int | None = None,
         all_programs: dict[str, list[dict]] | None = None,
@@ -343,11 +344,11 @@ class InstallWorker(threading.Thread):
             stdout_dest = subprocess.DEVNULL
             stderr_dest = subprocess.DEVNULL
 
-        popen_kwargs: dict = dict(
-            cwd=cwd,
-            stdout=stdout_dest,
-            stderr=stderr_dest,
-        )
+        popen_kwargs: dict = {
+            "cwd": cwd,
+            "stdout": stdout_dest,
+            "stderr": stderr_dest,
+        }
         if config.CREATE_NO_WINDOW:
             popen_kwargs["creationflags"] = config.CREATE_NO_WINDOW
         proc = subprocess.Popen(cmd_args, **popen_kwargs)

@@ -8,6 +8,7 @@ import shlex
 import subprocess
 import sys
 import urllib.request
+from typing import Protocol
 
 import config
 
@@ -66,24 +67,21 @@ def validate_cmd(cmd_str: str) -> str | None:
 
 
 def is_admin() -> bool:
-    if os.name != "nt":
+    if sys.platform != "win32":
         return os.geteuid() == 0
     try:
         import ctypes
-        return ctypes.windll.shell32.IsUserAnAdmin() != 0
+        return bool(ctypes.windll.shell32.IsUserAnAdmin())
     except Exception:
         return False
 
 
 def relaunch_as_admin() -> bool:
-    if os.name != "nt":
+    if sys.platform != "win32":
         if getattr(sys, "frozen", False):
-            params = [sys.executable] + sys.argv[1:]
+            params = [sys.executable, *sys.argv[1:]]
         else:
-            params = [
-                sys.executable,
-                os.path.abspath(sys.argv[0]),
-            ] + sys.argv[1:]
+            params = [sys.executable, os.path.abspath(sys.argv[0]), *sys.argv[1:]]
 
         env_vars: list[str] = []
         for key in (
@@ -101,13 +99,13 @@ def relaunch_as_admin() -> bool:
                 env_vars.append(f"{key}={os.environ[key]}")
 
         try:
-            return subprocess.call(["pkexec", "env"] + env_vars + params) == 0
+            return subprocess.call(["pkexec", "env", *env_vars, *params]) == 0
         except Exception:
             pass
         try:
             return (
                 subprocess.call(
-                    ["sudo", "-E", "--"] + params,
+                    ["sudo", "-E", "--", *params],
                     stdout=subprocess.DEVNULL,
                     stderr=subprocess.DEVNULL,
                 )
@@ -121,15 +119,15 @@ def relaunch_as_admin() -> bool:
 
     exe = sys.executable
     if getattr(sys, "frozen", False):
-        params = subprocess.list2cmdline(sys.argv[1:])
+        win_params = subprocess.list2cmdline(sys.argv[1:])
     else:
-        params = subprocess.list2cmdline(
-            [os.path.abspath(sys.argv[0])] + sys.argv[1:]
+        win_params = subprocess.list2cmdline(
+            [os.path.abspath(sys.argv[0]), *sys.argv[1:]]
         )
     try:
-        return (
+        return bool(
             ctypes.windll.shell32.ShellExecuteW(
-                None, "runas", exe, params, config.SCRIPT_DIR, 1
+                None, "runas", exe, win_params, config.SCRIPT_DIR, 1
             )
             > 32
         )
@@ -171,11 +169,15 @@ def _build_opener(user_agent: str) -> urllib.request.OpenerDirector:
     return urllib.request.build_opener(*handlers)
 
 
+class DownloadProgress(Protocol):
+    def __call__(self, total: int, downloaded: int) -> None: ...
+
+
 def _download_file(
     url: str,
     dst_path: str,
     user_agent: str,
-    progress_cb: callable | None = None,
+    progress_cb: DownloadProgress | None = None,
 ) -> str:
     """
     Скачивает файл из url в dst_path. Возвращает SHA-256 хеш (hex).
@@ -233,35 +235,27 @@ def dispatch_cmd(script_path: str, user_args: list[str]) -> tuple[list[str], str
     if ext == ".reg":
         return (["regedit", "/s", script_path], script_path)
     if ext in (".bat", ".cmd"):
-        return (["cmd", "/c", script_path] + user_args, script_path)
+        return (["cmd", "/c", script_path, *user_args], script_path)
     if ext == ".ps1":
         return (
-            [
-                "powershell",
-                "-ExecutionPolicy",
-                "Bypass",
-                "-NonInteractive",
-                "-File",
-                script_path,
-            ]
-            + user_args,
+            ["powershell", "-ExecutionPolicy", "Bypass", "-NonInteractive", "-File", script_path, *user_args],
             script_path,
         )
     if ext == ".msi":
         return (
-            ["msiexec", "/i", script_path, "/qn", "/norestart"] + user_args,
+            ["msiexec", "/i", script_path, "/qn", "/norestart", *user_args],
             script_path,
         )
     if ext in (".sh", ".bash"):
-        return (["bash", script_path] + user_args, script_path)
+        return (["bash", script_path, *user_args], script_path)
     if ext == ".deb":
-        cmd_list = ["apt-get", "install", "-y", script_path] + user_args
+        cmd_list = ["apt-get", "install", "-y", script_path, *user_args]
         if os.name != "nt" and not is_admin():
-            cmd_list = ["pkexec"] + cmd_list
+            cmd_list = ["pkexec", *cmd_list]
         return (cmd_list, script_path)
     if ext == ".AppImage":
-        return ([script_path] + user_args, script_path)
-    return ([script_path] + user_args, script_path)
+        return ([script_path, *user_args], script_path)
+    return ([script_path, *user_args], script_path)
 
 
 def build_cmd(cmd_str: str) -> tuple[list[str], str]:
@@ -306,9 +300,7 @@ def command_needs_root(cmd_str: str) -> bool:
     _PM_BARE = {"apt", "apt-get", "dpkg", "snap", "flatpak", "pacman", "rpm", "yum", "dnf"}
     if ext == "" and os.path.basename(first) in _PM_BARE:
         return True
-    if ext == ".deb":
-        return True
-    return False
+    return ext == ".deb"
 
 
 def relaunch_cli_as_root() -> int | None:
@@ -323,9 +315,9 @@ def relaunch_cli_as_root() -> int | None:
         return None
 
     if getattr(sys, "frozen", False):
-        params = [sys.executable] + sys.argv[1:]
+        params = [sys.executable, *sys.argv[1:]]
     else:
-        params = [sys.executable, os.path.abspath(sys.argv[0])] + sys.argv[1:]
+        params = [sys.executable, os.path.abspath(sys.argv[0]), *sys.argv[1:]]
 
     env_vars: list[str] = []
     for key in (
@@ -337,10 +329,10 @@ def relaunch_cli_as_root() -> int | None:
             env_vars.append(f"{key}={os.environ[key]}")
 
     try:
-        return subprocess.call(["pkexec", "env"] + env_vars + params)
+        return subprocess.call(["pkexec", "env", *env_vars, *params])
     except Exception:
         pass
     try:
-        return subprocess.call(["sudo", "--"] + params)
+        return subprocess.call(["sudo", "--", *params])
     except Exception:
         return None

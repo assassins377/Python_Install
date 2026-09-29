@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import contextlib
 import os
 import subprocess
+import sys
+from typing import TYPE_CHECKING
 
 import wx
 
@@ -30,10 +33,13 @@ class DispatchMixin:
     btn_cancel: wx.Button
     progress_bar: wx.Gauge
     search_ctrl: wx.TextCtrl
-    _set_status: callable
-    populate_tree: callable
-    _save_window_state: callable
-    _save_session: callable
+    if TYPE_CHECKING:
+        def _set_status(self, text: str, severity: str = "info") -> None: ...
+        def populate_tree(self, filter_text: str = "", category: str = "",
+                          status_filter: str | None = None) -> None: ...
+        def _save_window_state(self) -> None: ...
+        def _save_session(self) -> None: ...
+        def Close(self, force: bool = False) -> bool: ...
     _parallel_enabled: bool
     _installed_cache_enabled: bool
     installed_names: list
@@ -125,10 +131,8 @@ class DispatchMixin:
         _tray = getattr(self, "_tray", None)
         if _tray is not None:
             body = (". ".join(lines) + ".") if lines else i18n.t("tray.install_complete")
-            try:
+            with contextlib.suppress(Exception):
                 _tray.notify(i18n.t("tray.install_complete"), body)
-            except Exception:
-                pass
 
         invalidate_caches()
         invalidate_installed_cache(self._state)
@@ -190,7 +194,7 @@ class DispatchMixin:
                         log_path = find_latest_install_log(failed_name)
                         if log_path:
                             try:
-                                if os.name == "nt":
+                                if sys.platform == "win32":
                                     os.startfile(log_path)
                                 else:
                                     subprocess.Popen(

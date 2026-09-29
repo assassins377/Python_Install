@@ -19,6 +19,7 @@ import json
 import locale
 import logging
 import os
+import sys
 from typing import Any
 
 import config
@@ -89,7 +90,7 @@ def detect_system_language() -> str:
             loc = locale.getdefaultlocale()[0] or ""  # type: ignore[attr-defined]
 
     # Попытка 3: Windows API напрямую (для случаев когда locale ничего не даёт)
-    if not loc and os.name == "nt":
+    if sys.platform == "win32" and not loc:
         try:
             import ctypes
             lcid = ctypes.windll.kernel32.GetUserDefaultUILanguage()
