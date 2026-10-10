@@ -68,8 +68,9 @@ public:
     }
 
     bool smoke_check() {
-        const auto expected = 1 + catalog_.categories.size() + catalog_.program_count();
-        if (tree_->GetCount() != expected) {
+        const auto expected = catalog_.categories.size() + catalog_.program_count();
+        // wxMSW's hidden root is virtual; count descendants on every port.
+        if (tree_->GetChildrenCount(tree_->GetRootItem(), true) != expected) {
             return false;
         }
         if (first_program_.IsOk()) {
