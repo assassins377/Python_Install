@@ -1,0 +1,37 @@
+{
+  "version": 5,
+  "cmakeMinimumRequired": { "major": 3, "minor": 24, "patch": 0 },
+  "configurePresets": [
+    {
+      "name": "windows-base",
+      "hidden": true,
+      "generator": "Visual Studio 17 2022",
+      "toolset": "v142,version=14.29.30133",
+      "cacheVariables": {
+        "CMAKE_SYSTEM_VERSION": "10.0.19041.0",
+        "MINSTALL_BUILD_GUI": "ON",
+        "BUILD_TESTING": "ON"
+      }
+    },
+    {
+      "name": "windows-x86",
+      "inherits": "windows-base",
+      "architecture": "Win32",
+      "binaryDir": "${sourceDir}/out/windows-x86"
+    },
+    {
+      "name": "windows-x64",
+      "inherits": "windows-base",
+      "architecture": "x64",
+      "binaryDir": "${sourceDir}/out/windows-x64"
+    }
+  ],
+  "buildPresets": [
+    { "name": "windows-x86", "configurePreset": "windows-x86", "configuration": "Release" },
+    { "name": "windows-x64", "configurePreset": "windows-x64", "configuration": "Release" }
+  ],
+  "testPresets": [
+    { "name": "windows-x86", "configurePreset": "windows-x86", "configuration": "Release", "output": { "outputOnFailure": true } },
+    { "name": "windows-x64", "configurePreset": "windows-x64", "configuration": "Release", "output": { "outputOnFailure": true } }
+  ]
+}

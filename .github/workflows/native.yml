@@ -1,0 +1,106 @@
+name: Native prototype
+
+on:
+  pull_request:
+    branches: [main]
+    paths: ['native/**', 'programs.json', 'programs.schema.json', '.github/workflows/native.yml']
+  push:
+    branches: [main]
+    paths: ['native/**', 'programs.json', 'programs.schema.json', '.github/workflows/native.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    name: Native Windows ${{ matrix.arch }}
+    runs-on: windows-2022
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [x86, x64]
+    defaults:
+      run:
+        working-directory: native
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Use CMake 3.31.6
+        run: python -m pip install cmake==3.31.6
+      - name: Configure pinned experimental toolchain
+        run: cmake --preset windows-${{ matrix.arch }}
+      - name: Build prototype and tests
+        run: cmake --build --preset windows-${{ matrix.arch }} --parallel 2
+      - name: Test catalog, CLI and GUI lifecycle
+        run: ctest --preset windows-${{ matrix.arch }}
+      - name: Stage separate prototype package and inspect PE
+        run: |
+          $arch = '${{ matrix.arch }}'
+          $build = "out/windows-$arch"
+          $package = "out/package-$arch"
+          cmake --install $build --config Release --prefix $package
+          if ($LASTEXITCODE -ne 0) { throw 'Staging failed' }
+          $vs = & "${env:ProgramFiles(x86)}/Microsoft Visual Studio/Installer/vswhere.exe" -latest -property installationPath
+          $dumpbin = Join-Path $vs 'VC/Tools/MSVC/14.29.30133/bin/Hostx64/x64/dumpbin.exe'
+          & $dumpbin /headers "$package/minstall-native.exe" | Out-File "$package/pe-headers.txt"
+          if ($LASTEXITCODE -ne 0) { throw 'PE inspection failed' }
+          & $dumpbin /imports "$package/minstall-native.exe" | Out-File "$package/pe-imports.txt"
+          if ($LASTEXITCODE -ne 0) { throw 'Import inspection failed' }
+          $expectedMachine = if ($arch -eq 'x86') { '14C machine' } else { '8664 machine' }
+          if (-not (Select-String -Path "$package/pe-headers.txt" -SimpleMatch $expectedMachine)) {
+            throw "Wrong PE architecture: expected $arch"
+          }
+          Copy-Item "$build/CMakeCache.txt" "$package/build-cache.txt"
+          Copy-Item "$build/Testing/Temporary/LastTest.log" "$package/ctest.txt"
+          Get-FileHash "$package/minstall-native.exe" -Algorithm SHA256 | Format-List | Out-File "$package/sha256.txt"
+          $exe = (Resolve-Path "$package/minstall-native.exe").Path
+          Push-Location $env:RUNNER_TEMP
+          try {
+            & $exe --version
+            if ($LASTEXITCODE -ne 0) { throw 'Staged version failed' }
+            & $exe --list
+            if ($LASTEXITCODE -ne 0) { throw 'Staged catalog failed' }
+            & $exe --gui-smoke
+            if ($LASTEXITCODE -ne 0) { throw 'Staged GUI failed' }
+          } finally { Pop-Location }
+      - name: Upload prototype only (no release publication)
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: MInstAll-native-prototype-${{ matrix.arch }}
+          path: native/out/package-${{ matrix.arch }}/
+          if-no-files-found: error
+
+  linux:
+    name: Native Linux tests and coverage
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Install build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-3-dev ninja-build xvfb
+          python -m pip install cmake==3.31.6 gcovr==8.3
+      - name: Build GUI, core and tests with coverage
+        run: |
+          cmake -S native -B native/out/linux -G Ninja -DCMAKE_BUILD_TYPE=Debug -DMINSTALL_COVERAGE=ON
+          cmake --build native/out/linux --parallel 2
+      - name: Test and enforce native coverage
+        run: |
+          ctest --test-dir native/out/linux --output-on-failure
+          gcovr --root . --filter 'native/src/' --object-directory native/out/linux --fail-under-line 40 --txt --xml native/out/coverage.xml
+      - name: Build and test core with sanitizers
+        run: |
+          cmake -S native -B native/out/sanitizers -G Ninja -DCMAKE_BUILD_TYPE=Debug -DMINSTALL_BUILD_GUI=OFF -DMINSTALL_SANITIZERS=ON
+          cmake --build native/out/sanitizers --parallel 2
+          ctest --test-dir native/out/sanitizers --output-on-failure
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: MInstAll-native-linux-test-report
+          path: |
+            native/out/coverage.xml
+            native/out/linux/Testing/Temporary/LastTest.log
+            native/out/sanitizers/Testing/Temporary/LastTest.log
+          if-no-files-found: error
