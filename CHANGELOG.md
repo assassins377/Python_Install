@@ -2,6 +2,22 @@
 
 All notable changes to MInstAll.
 
+## [Unreleased]
+
+### Fixed
+- Redact URL credentials, query strings and fragments in proxy, download and exception logs.
+- Isolate installer downloads with unique files and per-task temporary directories; remove them after installation and reject truncated downloads.
+- Parse quoted Windows installer paths and arguments without POSIX backslash stripping.
+- Complete GUI self-updates by closing the main window on its event thread, saving state and stopping timers.
+- Require a valid, available SHA-256 before downloading or applying an application update.
+- Stage Windows updates in a unique directory and use a UTF-8 manifest for the replacement helper, preserving Unicode paths and restart arguments.
+- Bundle catalog, translations, profiles and icons in both Windows distributions; preserve editable sidecar overrides.
+
+### Changed
+- Build and smoke-test both onefile EXE and portable ZIP from clean Unicode paths on x86/x64, including real Windows updater/GUI lifecycle checks.
+- Verify every EXE/ZIP checksum and packaged resource set after artifact downloads.
+- Pin GitHub Actions to reviewed commit SHAs; restrict release write permission to its publishing job and retain the 40% coverage gate.
+
 ## [2.2.1] — 2026-07-02
 
 ### Added

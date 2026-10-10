@@ -10,9 +10,20 @@ if getattr(sys, 'frozen', False):
 else:
     SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 
+# Bundled defaults are read-only; user catalog/profile writes stay beside EXE.
+BUNDLE_DIR: str | None = getattr(sys, '_MEIPASS', None)
+
+
+def resource_path(relative_path: str) -> str:
+    external = os.path.join(SCRIPT_DIR, relative_path)
+    if os.path.exists(external) or BUNDLE_DIR is None:
+        return external
+    return os.path.join(BUNDLE_DIR, relative_path)
+
+
 CONFIG_FILE = os.path.join(SCRIPT_DIR, "programs.json")
-CATEGORY_HINTS_FILE = os.path.join(SCRIPT_DIR, "category_hints.json")
-ICON_FILE = os.path.join(SCRIPT_DIR, "icons", "system.png")
+CATEGORY_HINTS_FILE = resource_path("category_hints.json")
+ICON_FILE = resource_path(os.path.join("icons", "system.png"))
 
 # ====================================================================
 # Логирование

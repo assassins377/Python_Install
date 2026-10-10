@@ -24,6 +24,8 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--version", action="version",
                         version=f"MInstAll v{config.APP_VERSION}")
+    parser.add_argument("--self-check", metavar="REPORT.json",
+                        help="Проверить ресурсы сборки и записать JSON-отчёт без установки программ")
 
     # --- Установка ---
     install_group = parser.add_argument_group("Установка (без GUI)")
@@ -208,6 +210,10 @@ def _try_elevate(args: argparse.Namespace) -> bool:
 def main() -> None:
     parser = _build_parser()
     args = parser.parse_args()
+
+    if args.self_check:
+        from diagnostics import write_report
+        sys.exit(write_report(args.self_check))
 
     # CLI-режим — без wx, быстрее
     if _is_cli_mode(args):

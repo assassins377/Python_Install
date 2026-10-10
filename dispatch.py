@@ -28,6 +28,7 @@ class DispatchMixin:
     programs_db: dict
     _state: dict
     _closing: bool
+    _updating: bool
 
     btn_install: wx.Button
     btn_cancel: wx.Button
@@ -48,7 +49,7 @@ class DispatchMixin:
     tree: wx.TreeCtrl
 
     def start_install(self, event: wx.CommandEvent | None) -> None:
-        if self.worker and self.worker.is_alive():
+        if self._updating or (self.worker and self.worker.is_alive()):
             return
 
         tasks = [
@@ -277,6 +278,13 @@ class DispatchMixin:
             self.btn_cancel.Disable()
 
     def on_closing(self, event: wx.CloseEvent) -> None:
+        if self._updating:
+            if hasattr(event, "Veto"):
+                if event.CanVeto():
+                    event.Veto()
+                else:
+                    event.Skip()
+            return
         # Пункт меню "Выход" присылает CommandEvent (у него нет Veto и
         # event.Skip() не закрывает окно), крестик окна — CloseEvent.
         # Поэтому для меню закрываем окно явно через self.Close(), а для

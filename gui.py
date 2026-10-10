@@ -117,6 +117,7 @@ class MInstAllFrame(wx.Frame, MenuMixin, TreeMixin, DispatchMixin):
         self.worker: InstallWorker | None = None
         self.tree_data: dict = {}
         self._closing = False
+        self._updating = False
 
         self._search_timer = wx.Timer(self)
         self._search_timer.Bind(wx.EVT_TIMER, self._on_search_timer)
@@ -728,6 +729,9 @@ class MInstAllFrame(wx.Frame, MenuMixin, TreeMixin, DispatchMixin):
 
     def on_check_update(self, event: wx.CommandEvent) -> None:
         import updater
+        if self._updating or (self.worker and self.worker.is_alive()):
+            self._set_status("Дождитесь завершения текущей установки или обновления.", "warn")
+            return
         self._set_status("Проверка обновлений...", "progress")
 
         def on_check_done(result: dict) -> None:
@@ -737,6 +741,9 @@ class MInstAllFrame(wx.Frame, MenuMixin, TreeMixin, DispatchMixin):
 
     def _handle_update_check_result(self, result: dict) -> None:
         import updater
+
+        if self._closing or self._updating or (self.worker and self.worker.is_alive()):
+            return
 
         if "error" in result:
             self._set_status("Не удалось проверить обновления.", "warn")
@@ -773,6 +780,10 @@ class MInstAllFrame(wx.Frame, MenuMixin, TreeMixin, DispatchMixin):
         if choice != wx.ID_YES:
             return
 
+        self._save_window_state()
+        self._save_session()
+        self._updating = True
+        self.Disable()
         self.btn_install.Disable()
         self.progress_bar.SetValue(0)
 
@@ -792,10 +803,17 @@ class MInstAllFrame(wx.Frame, MenuMixin, TreeMixin, DispatchMixin):
         elif t == "progress":
             self.progress_bar.SetValue(msg["percent"])
         elif t == "error":
+            self._updating = False
+            self.Enable()
             self._set_status(msg["text"], "error")
             self.btn_install.Enable()
             wx.MessageBox(
                 msg["text"], "Ошибка обновления", wx.OK | wx.ICON_ERROR,
             )
         elif t == "done":
+            # This callback runs via wx.CallAfter on the GUI thread. Closing the
+            # frame saves state/stops timers and lets MainLoop return normally.
+            self._updating = False
+            self.Enable()
             self._set_status("Перезапуск...", "progress")
+            self.Close()

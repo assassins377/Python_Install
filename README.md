@@ -141,7 +141,8 @@ python -m pytest tests/ -v
 
 ```powershell
 pip install pyinstaller
-pyinstaller --clean --noconsole --onefile --name MInstAll_x86 --icon=icons/system.png main.py
+python tools/build_windows.py --arch x86
+python tools/smoke_windows.py --arch x86
 ```
 
 ### Project structure
@@ -312,7 +313,8 @@ python -m pytest tests/ -v
 
 ```powershell
 pip install pyinstaller
-pyinstaller --clean --noconsole --onefile --name MInstAll_x86 --icon=icons/system.png main.py
+python tools/build_windows.py --arch x86
+python tools/smoke_windows.py --arch x86
 ```
 
 ### Структура проекта
@@ -483,7 +485,8 @@ python -m pytest tests/ -v
 
 ```powershell
 pip install pyinstaller
-pyinstaller --clean --noconsole --onefile --name MInstAll_x86 --icon=icons/system.png main.py
+python tools/build_windows.py --arch x86
+python tools/smoke_windows.py --arch x86
 ```
 
 ### 项目结构

@@ -4,6 +4,8 @@ import contextlib
 import json
 import logging
 import os
+import re
+import shutil
 import stat
 import struct
 import subprocess
@@ -16,13 +18,19 @@ from typing import cast
 
 import config
 from core_impl import compare_versions
-from utils import _build_opener, _download_file
+from utils import _build_opener, _download_file, redact_urls
 
 # --- GitHub Releases API ---
 GITHUB_REPO = "assassins377/Python_Install"
 RELEASES_API_URL = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
 
 USER_AGENT = f"MInstAll/{config.APP_VERSION}"
+
+
+def _required_checksum(value: object) -> str:
+    if not isinstance(value, str) or re.fullmatch(r"[0-9a-fA-F]{64}", value) is None:
+        raise ValueError("Обновление остановлено: отсутствует корректная SHA-256")
+    return value.lower()
 
 
 def current_arch() -> str:
@@ -78,16 +86,17 @@ def check_for_updates(current_version: str | None = None) -> dict:
        "size": int | None, "notes": str}
     или {"error": str} при сбое.
 
-    Если в Release есть файл .sha256 — он скачивается для верификации.
-    Если нет — SHA-256 верификация пропускается (с предупреждением в логе).
+    Файл .sha256 обязателен. При недоступной или некорректной сумме
+    обновление не предлагается и скачивание исполняемого файла не начинается.
     """
     current = current_version or config.APP_VERSION
 
     try:
         release = _fetch_json(RELEASES_API_URL, timeout=5)
     except Exception as e:
-        logging.warning(f"Не удалось получить релизы с GitHub: {e}")
-        return {"error": str(e)}
+        error = redact_urls(str(e))
+        logging.warning(f"Не удалось получить релизы с GitHub: {error}")
+        return {"error": error}
 
     # Тег вида "v2.1.0" → "2.1.0"
     tag = str(release.get("tag_name", "")).lstrip("v")
@@ -111,21 +120,15 @@ def check_for_updates(current_version: str | None = None) -> dict:
     if not exe_url:
         return {"error": f"У файла {exe_name} нет ссылки на скачивание"}
 
-    # Опционально: .sha256 — отдельный файл с хешем
-    sha256: str | None = None
+    # A network failure must not silently downgrade update integrity.
     sha_asset = next((a for a in assets if a.get("name") == sha_name), None)
-    if sha_asset and (sha_url := sha_asset.get("browser_download_url")):
-        try:
-            sha_text = _fetch_text(sha_url, timeout=5)
-            # Формат может быть: "abc123..." или "abc123...  MInstAll_x86.exe"
-            sha256 = sha_text.split()[0].lower()
-        except Exception as e:
-            logging.warning(f"Не удалось прочитать {sha_name}: {e}")
-
-    if not sha256:
-        logging.warning(
-            f"В релизе v{tag} нет {sha_name} — обновление пройдёт без верификации SHA-256"
-        )
+    if not sha_asset or not (sha_url := sha_asset.get("browser_download_url")):
+        return {"error": f"Обновление остановлено: в релизе нет {sha_name}"}
+    try:
+        fields = _fetch_text(sha_url, timeout=5).split()
+        sha256 = _required_checksum(fields[0] if fields else None)
+    except Exception as e:
+        return {"error": f"Не удалось проверить {sha_name}: {redact_urls(str(e))}"}
 
     has_update = compare_versions(tag, current) > 0
     return {
@@ -178,7 +181,7 @@ def download_and_update(
     """
     Скачивает и применяет обновление собранного приложения.
 
-    Windows (.exe): формирует BAT для атомарной замены запущенного файла.
+    Windows (.exe): запускает помощник, ожидающий закрытия GUI.
     Linux (AppImage): атомарно заменяет .AppImage и перезапускает его.
     """
     def emit(msg: dict) -> None:
@@ -195,115 +198,95 @@ def download_and_update(
     return _apply_update_appimage(update_info, emit)
 
 
+# Paths and arguments are data in a UTF-8 manifest, never interpolated into code.
+# PowerShell 5.1 is available on supported Windows versions; -LiteralPath avoids
+# wildcard interpretation, and the helper waits for the GUI process to exit.
+_WINDOWS_UPDATE_SCRIPT = r"""param([string]$Manifest)
+$ErrorActionPreference = 'Stop'
+$data = Get-Content -LiteralPath $Manifest -Raw -Encoding UTF8 | ConvertFrom-Json
+$workDir = Split-Path -Parent $Manifest
+$replaced = $false
+try {
+    $parent = Get-Process -Id $data.pid -ErrorAction SilentlyContinue
+    if ($parent -and -not $parent.WaitForExit(60000)) {
+        throw 'Application did not close within 60 seconds; update cancelled.'
+    }
+    $digest = (Get-FileHash -LiteralPath $data.new -Algorithm SHA256).Hash.ToLower()
+    if ($digest -ne $data.sha256) { throw 'Update checksum mismatch.' }
+    # The onefile bootloader can hold the EXE briefly after its child exits.
+    for ($attempt = 0; $attempt -lt 20; $attempt++) {
+        try {
+            [System.IO.File]::Replace($data.new, $data.current, $data.backup)
+            $replaced = $true
+            break
+        } catch {
+            if ($attempt -eq 19) { throw }
+            Start-Sleep -Milliseconds 500
+        }
+    }
+    $start = @{ FilePath = $data.current; WorkingDirectory = (Split-Path -Parent $data.current) }
+    if ($data.arguments) { $start.ArgumentList = $data.arguments }
+    Start-Process @start
+    Remove-Item -LiteralPath $data.backup -Force
+} catch {
+    $failure = $_.Exception.Message
+    if ($replaced -and (Test-Path -LiteralPath $data.backup)) {
+        try { [System.IO.File]::Replace($data.backup, $data.current, $null) } catch {}
+    }
+    $failure | Out-File -LiteralPath $data.log -Encoding UTF8 -Append
+    exit 1
+} finally {
+    # Keep an unrestored backup for recovery if rollback itself failed.
+    if (-not (Test-Path -LiteralPath $data.backup)) {
+        Remove-Item -LiteralPath $workDir -Recurse -Force -ErrorAction SilentlyContinue
+    }
+}
+"""
+
+
 def _apply_update_windows(update_info: dict, emit) -> bool:
-    """Замена запущенного .exe через временный BAT (см. ниже)."""
-    current_exe = sys.executable
-    exe_dir = os.path.dirname(current_exe)
-    new_exe_path = current_exe + ".new"
-    bak_exe_path = current_exe + ".bak"
-    bat_path = os.path.join(tempfile.gettempdir(), "minstall_updater.bat")
-
-    for stale in (new_exe_path, bak_exe_path):
-        try:
-            if os.path.exists(stale):
-                os.remove(stale)
-        except OSError:
-            pass
-
+    """Stage a verified EXE, hand off replacement, then request GUI shutdown."""
+    work_dir: str | None = None
+    handed_off = False
     try:
+        expected_sha = _required_checksum(update_info.get("sha256"))
+        current_exe = sys.executable
+        exe_dir = os.path.dirname(current_exe)
+        work_dir = tempfile.mkdtemp(prefix=".minstall-update-", dir=exe_dir)
+        new_path = os.path.join(work_dir, "update.exe")
         emit({"type": "status", "text": "Скачивание обновления..."})
         actual_sha = _download_with_progress(
-            update_info["url"], new_exe_path, update_info.get("size"), emit
+            update_info["url"], new_path, update_info.get("size"), emit,
         )
-
-        # Верификация SHA-256 — только если ожидаемый хеш известен
-        expected_sha = update_info.get("sha256")
-        if expected_sha:
-            if actual_sha != expected_sha.lower():
-                logging.error(
-                    f"SHA-256 не совпадает. Ожидалось {expected_sha}, получено {actual_sha}"
-                )
-                with contextlib.suppress(OSError):
-                    os.remove(new_exe_path)
-                emit({"type": "error",
-                      "text": "Контрольная сумма не совпадает. Файл повреждён или подменён."})
-                return False
-            logging.info(f"Обновление скачано и проверено: SHA-256 {actual_sha}")
-        else:
-            logging.warning(
-                f"SHA-256 верификация пропущена (хеш не предоставлен). Загружено: {actual_sha}"
-            )
-
-        emit({"type": "status", "text": "Применение обновления..."})
-
-        # PID текущего процесса — BAT будет ждать пока он не завершится,
-        # вместо хрупкого ping-таймаута. Максимум — 60 секунд защиты от вечного цикла.
-        current_pid = os.getpid()
-
-        bat_content = f"""@echo off
-chcp 866 > nul
-echo Обновление MInstAll...
-
-REM Ждём пока текущий процесс завершится (max 60 сек защита от deadlock)
-set /a "waited=0"
-:wait_loop
-tasklist /FI "PID eq {current_pid}" /NH 2>nul | findstr /R /C:"^.* {current_pid} " >nul
-if errorlevel 1 goto proceed
-if %waited% GEQ 60 (
-    echo Процесс {current_pid} не завершился за 60 секунд, прерываем
-    del /Q "{new_exe_path}" >nul 2>&1
-    pause
-    exit /b 1
-)
-timeout /t 1 /nobreak >nul
-set /a "waited+=1"
-goto wait_loop
-
-:proceed
-move /Y "{current_exe}" "{bak_exe_path}" >nul 2>&1
-if errorlevel 1 (
-    echo Не удалось создать резервную копию.
-    del /Q "{new_exe_path}" >nul 2>&1
-    pause
-    exit /b 1
-)
-
-move /Y "{new_exe_path}" "{current_exe}" >nul 2>&1
-if errorlevel 1 (
-    echo Не удалось применить обновление, откат.
-    move /Y "{bak_exe_path}" "{current_exe}" >nul 2>&1
-    pause
-    exit /b 1
-)
-
-del /Q "{bak_exe_path}" >nul 2>&1
-start "" "{current_exe}"
-del "%~f0"
-"""
-        with open(bat_path, "w", encoding="cp866", errors="replace") as f:
-            f.write(bat_content)
-
+        if actual_sha != expected_sha:
+            raise ValueError("Контрольная сумма не совпадает. Обновление остановлено.")
+        script_path = os.path.join(work_dir, "update.ps1")
+        manifest_path = os.path.join(work_dir, "update.json")
+        with open(script_path, "w", encoding="utf-8-sig") as stream:
+            stream.write(_WINDOWS_UPDATE_SCRIPT)
+        with open(manifest_path, "w", encoding="utf-8") as stream:
+            json.dump({
+                "pid": os.getpid(), "current": current_exe, "new": new_path,
+                "backup": os.path.join(work_dir, "previous.exe"), "sha256": expected_sha,
+                "arguments": subprocess.list2cmdline(sys.argv[1:]), "log": config.LOG_FILE,
+            }, stream, ensure_ascii=False)
         subprocess.Popen(
-            ["cmd", "/c", bat_path],
-            creationflags=config.CREATE_NO_WINDOW,
-            cwd=exe_dir,
+            ["powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
+             "-File", script_path, "-Manifest", manifest_path],
+            creationflags=config.CREATE_NO_WINDOW, cwd=exe_dir,
         )
-
+        handed_off = True
         emit({"type": "done"})
-        logging.info("Передача управления updater.bat. Завершение работы.")
-        sys.exit(0)
-
-    except SystemExit:
-        raise
-    except Exception as e:
-        logging.exception(f"Ошибка при обновлении: {e}")
-        try:
-            if os.path.exists(new_exe_path):
-                os.remove(new_exe_path)
-        except OSError:
-            pass
-        emit({"type": "error", "text": f"Ошибка: {e}"})
+        return True
+    except Exception as exc:
+        error = redact_urls(str(exc))
+        logging.error("Ошибка при обновлении: %s", error)
+        emit({"type": "error", "text": error})
         return False
+    finally:
+        if work_dir and not handed_off:
+            with contextlib.suppress(OSError):
+                shutil.rmtree(work_dir)
 
 
 def _apply_update_appimage(update_info: dict, emit) -> bool:
@@ -311,28 +294,24 @@ def _apply_update_appimage(update_info: dict, emit) -> bool:
 
     AppImage при запуске монтирует свой squashfs с исходного inode, поэтому
     замена файла по имени не ломает текущий процесс — он дорабатывает до
-    sys.exit(), а новый AppImage стартует уже с обновлённого файла.
+    закрытия GUI, а новый AppImage стартует уже с обновлённого файла.
     """
     appimage_path = os.environ.get("APPIMAGE") or sys.executable
     if not (appimage_path.lower().endswith(".appimage") or os.environ.get("APPIMAGE")):
         emit({"type": "error", "text": "Самообновление на Linux поддерживается только для AppImage"})
         return False
 
-    new_path = appimage_path + ".new"
+    new_path: str | None = None
     try:
-        if os.path.exists(new_path):
-            os.remove(new_path)
-    except OSError:
-        pass
-
-    try:
+        expected_sha = _required_checksum(update_info.get("sha256"))
+        fd, new_path = tempfile.mkstemp(prefix=".minstall-update-", dir=os.path.dirname(appimage_path))
+        os.close(fd)
         emit({"type": "status", "text": "Скачивание обновления..."})
         actual_sha = _download_with_progress(
             update_info["url"], new_path, update_info.get("size"), emit
         )
 
-        expected_sha = update_info.get("sha256")
-        if expected_sha and actual_sha != expected_sha.lower():
+        if actual_sha != expected_sha:
             logging.error(
                 f"SHA-256 не совпадает. Ожидалось {expected_sha}, получено {actual_sha}"
             )
@@ -341,11 +320,6 @@ def _apply_update_appimage(update_info: dict, emit) -> bool:
             emit({"type": "error",
                   "text": "Контрольная сумма не совпадает. Файл повреждён или подменён."})
             return False
-        if not expected_sha:
-            logging.warning(
-                f"SHA-256 верификация пропущена (хеш не предоставлен). Загружено: {actual_sha}"
-            )
-
         emit({"type": "status", "text": "Применение обновления..."})
         # Preserve existing read/execute access without introducing write access
         # for other users or carrying setuid/setgid bits to the downloaded file.
@@ -356,23 +330,18 @@ def _apply_update_appimage(update_info: dict, emit) -> bool:
         # процесса, новый файл встаёт на имя .AppImage.
         os.replace(new_path, appimage_path)
 
-        emit({"type": "done"})
-        logging.info("AppImage обновлён, перезапуск.")
-        # Перезапуск нового AppImage; текущий процесс завершается.
         subprocess.Popen([appimage_path, *sys.argv[1:]])
-        sys.exit(0)
-
-    except SystemExit:
-        raise
-    except Exception as e:
-        logging.exception(f"Ошибка при обновлении AppImage: {e}")
-        try:
-            if os.path.exists(new_path):
-                os.remove(new_path)
-        except OSError:
-            pass
-        emit({"type": "error", "text": f"Ошибка: {e}"})
+        emit({"type": "done"})
+        return True
+    except Exception as exc:
+        error = redact_urls(str(exc))
+        logging.error("Ошибка при обновлении AppImage: %s", error)
+        emit({"type": "error", "text": error})
         return False
+    finally:
+        if new_path:
+            with contextlib.suppress(OSError):
+                os.remove(new_path)
 
 
 def check_program_update(program: dict, timeout: int = 5) -> dict:

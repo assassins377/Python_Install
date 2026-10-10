@@ -124,12 +124,10 @@ def test_appimage_replacement_preserves_restricted_access(tmp_path, monkeypatch,
     launch = Mock()
     monkeypatch.setattr(updater.subprocess, "Popen", launch)
     events = []
-    with pytest.raises(SystemExit) as exc:
-        updater._apply_update_appimage({
-            "url": "https://example.com/app",
-            "sha256": hashlib.sha256(b"new").hexdigest().upper(),
-        }, events.append)
-    assert exc.value.code == 0
+    assert updater._apply_update_appimage({
+        "url": "https://example.com/app",
+        "sha256": hashlib.sha256(b"new").hexdigest().upper(),
+    }, events.append)
     assert current.read_bytes() == b"new"
     assert not (tmp_path / "MInstAll.AppImage.new").exists()
     if os.name != "nt":
