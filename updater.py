@@ -243,7 +243,14 @@ try {
 } catch {
     $failure = $_.Exception.Message
     if ($replaced -and (Test-Path -LiteralPath $data.backup)) {
-        try { [System.IO.File]::Replace($data.backup, $data.current, $null) } catch {}
+        try {
+            # PowerShell can coerce $null to an empty string for .NET paths.
+            # Keep the failed candidate in staging until rollback completes.
+            $failedPath = [System.IO.Path]::Combine($workDir, 'failed.exe')
+            [System.IO.File]::Replace($data.backup, $data.current, $failedPath)
+        } catch {
+            $failure += '; Rollback failed: ' + $_.Exception.Message
+        }
     }
     $failure | Out-File -LiteralPath $data.log -Encoding UTF8 -Append
     exit 1

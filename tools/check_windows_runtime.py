@@ -34,11 +34,12 @@ def check_helper() -> None:
             helper = stage / "update.ps1"
             helper.write_text(updater._WINDOWS_UPDATE_SCRIPT, encoding="utf-8-sig")
             manifest = stage / "update.json"
+            log = root / f"{scenario}.log"
             parent = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(1)"])
             manifest.write_text(json.dumps({
                 "pid": parent.pid, "current": str(current), "new": str(candidate),
                 "backup": str(stage / "previous.exe"), "sha256": "0" * 64 if scenario == "corrupt" else digest,
-                "arguments": "/c exit 0", "log": str(root / "update.log"),
+                "arguments": "/c exit 0", "log": str(log),
             }, ensure_ascii=False), encoding="utf-8")
             try:
                 result = subprocess.run(
@@ -48,7 +49,6 @@ def check_helper() -> None:
                 )
             finally:
                 parent.wait(timeout=5)
-            log = root / "update.log"
             failure = log.read_text(encoding="utf-8-sig") if log.exists() else "No helper error log"
             if scenario == "valid":
                 if result.returncode != 0 or hashlib.sha256(current.read_bytes()).hexdigest() != digest:
