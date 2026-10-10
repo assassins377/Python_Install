@@ -46,9 +46,11 @@ def check_helper() -> None:
                 )
             finally:
                 parent.wait(timeout=5)
+            log = root / "update.log"
+            failure = log.read_text(encoding="utf-8-sig") if log.exists() else "No helper error log"
             if valid:
                 if result.returncode != 0 or hashlib.sha256(current.read_bytes()).hexdigest() != digest:
-                    raise RuntimeError("Windows update replacement failed")
+                    raise RuntimeError(f"Windows update replacement failed ({result.returncode}): {ascii(failure)}")
             elif result.returncode == 0 or current.read_bytes() != b"previous version":
                 raise RuntimeError("Corrupt update was not rejected")
             if stage.exists():
