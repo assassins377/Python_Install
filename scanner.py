@@ -229,7 +229,7 @@ def _scan_recursive(
 
         if os.path.isdir(full_path):
             # Рекурсивно идём вглубь, добавляя имя папки в путь
-            _scan_recursive(root, full_path, path_parts + [entry],
+            _scan_recursive(root, full_path, [*path_parts, entry],
                             categories, max_depth)
             continue
 

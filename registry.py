@@ -4,6 +4,7 @@ import os
 import re
 import shlex
 import subprocess
+import sys
 import time
 
 import config
@@ -159,7 +160,7 @@ def _query_pacman() -> list[tuple[str, str]]:
 
 
 def _get_installed_programs_uncached() -> list[tuple[str, str]]:
-    if os.name != "nt":
+    if sys.platform != "win32":
         import shutil
         entries: list[tuple[str, str]] = []
         if shutil.which("dpkg-query"):
@@ -174,7 +175,7 @@ def _get_installed_programs_uncached() -> list[tuple[str, str]]:
             entries.extend(_query_pacman())
         return entries
     import winreg
-    entries: list[tuple[str, str]] = []
+    entries = []
     for hive in [winreg.HKEY_LOCAL_MACHINE, winreg.HKEY_CURRENT_USER]:
         for key_path in UNINSTALL_KEYS:
             try:
@@ -244,7 +245,7 @@ def get_net_framework_release(use_cache: bool = True) -> int | None:
     if use_cache and _net_release_cache[0]:
         return _net_release_cache[1]
 
-    if os.name != "nt":
+    if sys.platform != "win32":
         _net_release_cache = (True, None)
         return None
 
@@ -402,7 +403,7 @@ def _extract_package_from_cmd(parts: list[str], program: dict) -> str:
         if tok.lower() in _PM_SUBCOMMANDS:
             continue
         return tok
-    return program.get("name", "")
+    return str(program.get("name", ""))
 
 
 def get_linux_update_command(program: dict) -> str | None:

@@ -3,6 +3,9 @@ from __future__ import annotations
 import contextlib
 import os
 import subprocess
+import sys
+from collections.abc import Callable
+from typing import TYPE_CHECKING
 
 import wx
 import wx.adv
@@ -38,8 +41,16 @@ class TreeMixin:
     search_ctrl: wx.TextCtrl
     desc_label: wx.StaticText
     selection_label: wx.StaticText
-    _set_status: callable
-    _update_selection_counter: callable
+    if TYPE_CHECKING:
+        # Methods supplied by the wx.Frame host; no runtime stubs in the MRO.
+        def _set_status(self, text: str, severity: str = "info") -> None: ...
+        def Bind(self, event: wx.PyEventBinder, handler: Callable[..., None],
+                 source: wx.EvtHandler | None = None) -> None: ...
+        def PopupMenu(self, menu: wx.Menu) -> bool: ...
+        def _on_add_program(self, event: wx.CommandEvent,
+                            category_name: str | None = None) -> None: ...
+        def _on_edit_program(self, program_data: dict,
+                             tree_item: CT.CustomTreeItem | None = None) -> None: ...
 
     _hide_missing: bool
     status_cache: dict
@@ -261,7 +272,7 @@ class TreeMixin:
     def _on_tree_motion(self, event: wx.MouseEvent) -> None:
         event.Skip()
         pos = event.GetPosition()
-        hit_item, flags = self.tree.HitTest(pos)
+        hit_item, _flags = self.tree.HitTest(pos)
         if hit_item is None or not hit_item.IsOk():
             self._last_tooltip_item = None
             self.tree.SetToolTip(None)
@@ -501,7 +512,7 @@ class TreeMixin:
             )
             return
         try:
-            if os.name == "nt":
+            if sys.platform == "win32":
                 os.startfile(config.LOG_FILE)
             else:
                 subprocess.Popen(
@@ -577,7 +588,7 @@ class TreeMixin:
 
     def _ctx_open_prog_log(self, log_path: str) -> None:
         try:
-            if os.name == "nt":
+            if sys.platform == "win32":
                 os.startfile(log_path)
             else:
                 subprocess.Popen(

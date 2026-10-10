@@ -99,6 +99,12 @@ line-length = 100
 target-version = "py310"
 
 [tool.ruff.lint]
+# Intentional Russian prose and UI text. Keep RUF001/RUF002/RUF003 enabled
+# for other confusables rather than replacing Cyrillic with Latin lookalikes.
+allowed-confusables = [
+    "А", "В", "Е", "З", "К", "М", "Н", "О", "Р", "С", "Т", "У", "Ь",
+    "а", "б", "г", "е", "о", "р", "с", "у",
+]
 select = [
     "E",   # pycodestyle errors
     "W",   # pycodestyle warnings

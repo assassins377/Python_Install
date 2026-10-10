@@ -147,22 +147,22 @@ class TestBuildCmd(unittest.TestCase):
         self.assertIn("/silent", args)
 
     def test_msi(self) -> None:
-        args, path = core.build_cmd("software\\pkg.msi")
+        args, _path = core.build_cmd("software\\pkg.msi")
         self.assertEqual(args[0], "msiexec")
         self.assertIn("/qn", args)
 
     def test_bat(self) -> None:
-        args, path = core.build_cmd("scripts\\run.bat")
+        args, _path = core.build_cmd("scripts\\run.bat")
         self.assertEqual(args[0], "cmd")
         self.assertEqual(args[1], "/c")
 
     def test_ps1(self) -> None:
-        args, path = core.build_cmd("scripts\\tweak.ps1 -Param value")
+        args, _path = core.build_cmd("scripts\\tweak.ps1 -Param value")
         self.assertEqual(args[0], "powershell")
         self.assertIn("-NonInteractive", args)
 
     def test_reg(self) -> None:
-        args, path = core.build_cmd("tweaks\\fix.reg")
+        args, _path = core.build_cmd("tweaks\\fix.reg")
         self.assertEqual(args[0], "regedit")
         self.assertIn("/s", args)
 
@@ -181,12 +181,12 @@ class TestBuildCmd(unittest.TestCase):
 class TestCheckStatus(unittest.TestCase):
     def test_always_runnable(self) -> None:
         prog = {"name": "Tweak", "cmd": "t.bat", "detect": {"always_runnable": True}}
-        status, ver = core.check_status(prog, [])
+        status, _ver = core.check_status(prog, [])
         self.assertEqual(status, "runnable")
 
     def test_missing_program(self) -> None:
         prog = {"name": "Missing App", "cmd": "m.exe", "detect": {}}
-        status, ver = core.check_status(prog, [("Other App", "1.0")])
+        status, _ver = core.check_status(prog, [("Other App", "1.0")])
         self.assertEqual(status, "missing")
 
     def test_found_program(self) -> None:
@@ -203,7 +203,7 @@ class TestCheckStatus(unittest.TestCase):
 
     def test_registry_name_override(self) -> None:
         prog = {"name": "Chrome", "cmd": "c.exe", "detect": {"registry_name": "Google Chrome"}}
-        status, ver = core.check_status(prog, [("Google Chrome", "120.0")])
+        status, _ver = core.check_status(prog, [("Google Chrome", "120.0")])
         self.assertEqual(status, "ok")
 
     def test_path_detection_exists(self) -> None:
@@ -720,9 +720,15 @@ class TestUpdaterArch(unittest.TestCase):
         self.assertIn(arch, ("x86", "x64"))
 
     def test_exe_asset_name_matches_arch(self) -> None:
+        from unittest.mock import patch
+
         import updater
-        arch = updater.current_arch()
-        self.assertEqual(updater.exe_asset_name(), f"MInstAll_{arch}.exe")
+        for platform, suffix in (("nt", ".exe"), ("posix", ".AppImage")):
+            for arch in ("x86", "x64"):
+                with self.subTest(platform=platform, arch=arch), \
+                     patch("updater.os.name", platform), \
+                     patch("updater.current_arch", return_value=arch):
+                    self.assertEqual(updater.exe_asset_name(), f"MInstAll_{arch}{suffix}")
 
     def test_sha256_asset_name_matches_exe(self) -> None:
         import updater
@@ -1145,7 +1151,7 @@ class TestCliResolveTargets(unittest.TestCase):
 
     def test_install_by_names(self) -> None:
         import cli
-        tasks, not_found = cli.resolve_targets("Chrome, VLC", self.db, False, [])
+        tasks, _not_found = cli.resolve_targets("Chrome, VLC", self.db, False, [])
         names = {t["name"] for t in tasks}
         self.assertEqual(names, {"Chrome", "VLC"})
 
@@ -1217,7 +1223,7 @@ class TestI18n(unittest.TestCase):
         import i18n
         lang = i18n.detect_system_language()
         # Результат должен быть либо поддерживаемым, либо fallback
-        self.assertIn(lang, list(i18n.SUPPORTED_LANGUAGES.keys()) + [i18n.FALLBACK_LANGUAGE])
+        self.assertIn(lang, [*list(i18n.SUPPORTED_LANGUAGES.keys()), i18n.FALLBACK_LANGUAGE])
 
     def test_init_auto_returns_lang_code(self) -> None:
         import i18n
@@ -1458,7 +1464,7 @@ class TestLinuxInstalledQueries(unittest.TestCase):
         def fake_which(tool: str):
             return "/usr/bin/" + tool if tool in ("dpkg-query", "snap") else None
 
-        with patch("registry.os.name", "posix"), \
+        with patch("registry.sys.platform", "linux"), \
                 patch("shutil.which", side_effect=fake_which), \
                 patch("registry._query_dpkg", return_value=[("a", "1")]), \
                 patch("registry._query_snap", return_value=[("b", "2")]), \
@@ -1473,4 +1479,3 @@ class TestLinuxInstalledQueries(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

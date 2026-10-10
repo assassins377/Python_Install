@@ -71,7 +71,7 @@ def topological_levels(
     task_by_name = {t["name"]: t for t in sorted_tasks}
 
     graph: dict[str, list[str]] = {n: [] for n in task_names}
-    in_degree: dict[str, int] = {n: 0 for n in task_names}
+    in_degree: dict[str, int] = dict.fromkeys(task_names, 0)
 
     for name in task_names:
         for dep_name in task_by_name[name].get("depends_on", []):

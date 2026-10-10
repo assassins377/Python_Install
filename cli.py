@@ -55,6 +55,7 @@ def _elevate_if_needed(programs: list[dict]) -> None:
     как есть (часть команд может завершиться с ошибкой доступа).
     """
     import os
+
     from utils import command_needs_root, is_admin, relaunch_cli_as_root
     if os.name == "nt" or is_admin():
         return
@@ -82,8 +83,7 @@ def _supports_color() -> bool:
     if not sys.stdout.isatty():
         return False
     # Windows 10+ поддерживает ANSI через VT-режим, активируем
-    import os
-    if os.name == "nt":
+    if sys.platform == "win32":
         try:
             import ctypes
             kernel32 = ctypes.windll.kernel32
@@ -294,11 +294,12 @@ def resolve_targets(
         for p in progs:
             all_by_name[p["name"].lower()] = p
 
+    candidates: list[dict]
     if install_arg.strip().lower() == "all":
         candidates = list(all_by_name.values())
     else:
         names = [n.strip() for n in install_arg.split(",") if n.strip()]
-        candidates: list[dict] = []
+        candidates = []
         not_found: list[str] = []
         for n in names:
             if prog := all_by_name.get(n.lower()):
@@ -498,7 +499,7 @@ def run(
     programs_db = load_programs_from_json()
     # CLI всегда получает актуальные данные — инвалидируем кэш
     from core_impl import invalidate_installed_cache
-    state_dict = {}
+    state_dict: dict = {}
     invalidate_installed_cache(state_dict)
     installed_entries = get_installed_programs(state_dict=state_dict, use_cache=False)
 
@@ -551,7 +552,9 @@ def run(
     # Подтверждение перед реальной установкой — только в интерактивном терминале
     # и там, где не потребуется отдельное повышение (иначе двойной промпт с pkexec).
     import os as _os
-    from utils import is_admin as _is_admin, command_needs_root as _needs_root
+
+    from utils import command_needs_root as _needs_root
+    from utils import is_admin as _is_admin
     will_elevate = (_os.name != "nt" and not _is_admin()
                     and any(_needs_root(p.get("cmd", "")) for p in tasks))
     if (not args.dry_run and not args.yes and not will_elevate

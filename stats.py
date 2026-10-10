@@ -11,7 +11,7 @@ from __future__ import annotations
 import os
 import shlex
 import statistics
-from typing import Any
+from collections.abc import Callable
 
 import config
 from utils import _normalize_cmd_paths, resolve_path
@@ -43,7 +43,7 @@ def get_program_file_size(program: dict) -> int:
         return 0
 
 
-def format_size(bytes_total: int, t: Any = None) -> str:
+def format_size(bytes_total: int, t: Callable[..., str] | None = None) -> str:
     """Форматирует байты в КБ/МБ/ГБ. t — функция перевода (i18n.t) или None."""
     if t is None:
         # Fallback без i18n
@@ -99,7 +99,7 @@ def estimate_time(program: dict, times_db: dict[str, list[float]]) -> float | No
     return statistics.median(history)
 
 
-def format_duration(seconds: float, t: Any = None) -> str:
+def format_duration(seconds: float, t: Callable[..., str] | None = None) -> str:
     """Форматирует секунды в человекочитаемое время."""
     if t is None:
         if seconds < 60:
@@ -125,7 +125,7 @@ def format_duration(seconds: float, t: Any = None) -> str:
 def selection_summary(
     selected_programs: list[dict],
     state_dict: dict,
-    t: Any = None,
+    t: Callable[..., str] | None = None,
 ) -> tuple[int, int, float | None]:
     """
     Считает сводку: (количество, суммарный_размер_байт, суммарное_время_сек).

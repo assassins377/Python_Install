@@ -13,8 +13,8 @@ jobs:
   test:
     runs-on: windows-latest
     steps:
-    - uses: actions/checkout@v4
-    - uses: actions/setup-python@v5
+    - uses: actions/checkout@v7
+    - uses: actions/setup-python@v6
       with:
         python-version: '3.10'
     - run: |
@@ -36,10 +36,10 @@ jobs:
     name: Build ${{ matrix.arch }}
     steps:
     - name: Скачиваем код
-      uses: actions/checkout@v4
+      uses: actions/checkout@v7
 
     - name: Устанавливаем ${{ matrix.arch }} Python 3.10
-      uses: actions/setup-python@v5
+      uses: actions/setup-python@v6
       with:
         python-version: '3.10'
         architecture: ${{ matrix.python-arch }}
@@ -76,9 +76,10 @@ jobs:
         "$sha  $zipName" | Out-File -FilePath "$zip.sha256" -Encoding ASCII -NoNewline
 
     - name: Загружаем артефакты для финального release-job
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
         name: MInstAll_${{ matrix.arch }}_artifacts
+        if-no-files-found: error
         path: |
           dist/MInstAll_${{ matrix.arch }}.exe
           dist/MInstAll_${{ matrix.arch }}.exe.sha256
@@ -90,7 +91,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - name: Скачиваем код (для шаблона release notes)
-      uses: actions/checkout@v4
+      uses: actions/checkout@v7
 
     - name: Определяем версию из тега
       id: version
@@ -99,13 +100,13 @@ jobs:
         echo "tag=$TAG" >> "$GITHUB_OUTPUT"
 
     - name: Скачиваем артефакты x86
-      uses: actions/download-artifact@v4
+      uses: actions/download-artifact@v8
       with:
         name: MInstAll_x86_artifacts
         path: dist/
 
     - name: Скачиваем артефакты x64
-      uses: actions/download-artifact@v4
+      uses: actions/download-artifact@v8
       with:
         name: MInstAll_x64_artifacts
         path: dist/

@@ -116,7 +116,6 @@ class ProgramEditorDialog(wx.Dialog):
         self.uninstall_cmd_ctrl.SetValue(self.program_data.get("uninstall_cmd", ""))
         self.version_pattern_ctrl.SetValue(self.program_data.get("version_pattern", ""))
 
-        import json
         detect_json = json.dumps(self.program_data.get("detect", {}), indent=4, ensure_ascii=False)
         self.detect_ctrl.SetValue(detect_json)
 
@@ -131,7 +130,6 @@ class ProgramEditorDialog(wx.Dialog):
         self.main_sizer.Add(btn_sizer, 0, wx.EXPAND | wx.ALL, 10)
 
     def GetProgramData(self):
-        import json
         program_data = {
             "name": self.name_ctrl.GetValue().strip(),
             "cmd": self.cmd_ctrl.GetValue().strip(),

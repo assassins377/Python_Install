@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from collections.abc import Callable
+from typing import TYPE_CHECKING
+
 import wx
 
 import config
@@ -8,6 +11,7 @@ import profiles
 import scanner
 import state
 from core_impl import (
+    InstallWorker,
     build_status_cache,
     invalidate_installed_cache,
     load_programs_from_json,
@@ -39,14 +43,27 @@ class MenuMixin:
     tree: wx.TreeCtrl
     search_ctrl: wx.TextCtrl
     programs_db: dict
-    worker: object
+    worker: InstallWorker | None
     _dir_snapshot: object
     installed_names: list
     status_cache: dict
     _catalog_dirty: bool
-    _set_status: callable
-    populate_tree: callable
-    _update_selection_counter: callable
+    if TYPE_CHECKING:
+        # Host and sibling-mixin contracts; do not shadow their implementations.
+        def _set_status(self, text: str, severity: str = "info") -> None: ...
+        def populate_tree(self, filter_text: str = "", category: str = "",
+                          status_filter: str | None = None) -> None: ...
+        def _update_selection_counter(self) -> None: ...
+        def Bind(self, event: wx.PyEventBinder, handler: Callable[..., None],
+                 source: wx.EvtHandler | None = None) -> None: ...
+        def SetMenuBar(self, menubar: wx.MenuBar) -> None: ...
+        def _on_add_program(self, event: wx.CommandEvent,
+                            category_name: str | None = None) -> None: ...
+        def on_closing(self, event: wx.CloseEvent) -> None: ...
+        def on_check_update(self, event: wx.CommandEvent) -> None: ...
+        def on_show_add_guide(self, event: wx.CommandEvent) -> None: ...
+        def on_check_program_updates(self, event: wx.CommandEvent) -> None: ...
+        def on_about(self, event: wx.CommandEvent) -> None: ...
     tree_data: dict
 
     def create_menu(self) -> None:

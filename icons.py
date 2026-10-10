@@ -13,12 +13,15 @@ from __future__ import annotations
 import hashlib
 import logging
 import os
+import sys
 import threading
 from collections.abc import Callable
-
-import wx
+from typing import TYPE_CHECKING
 
 import config
+
+if TYPE_CHECKING:
+    import wx
 
 ICON_CACHE_DIR = os.path.join(config.SCRIPT_DIR, "icons", "cache")
 
@@ -29,7 +32,7 @@ ICON_CACHE_DIR = os.path.join(config.SCRIPT_DIR, "icons", "cache")
 
 def _cache_path_for(exe_path: str) -> str:
     """Уникальный путь к кешу иконки для данного .exe (по хешу абс. пути)."""
-    h = hashlib.sha1(exe_path.lower().encode("utf-8", errors="replace")).hexdigest()[:12]
+    h = hashlib.sha256(exe_path.lower().encode("utf-8", errors="replace")).hexdigest()[:12]
     return os.path.join(ICON_CACHE_DIR, f"{h}.png")
 
 
@@ -40,7 +43,7 @@ def _extract_hicon_from_exe(exe_path: str) -> int | None:
     Возвращает handle иконки (int) или None.
     Caller обязан освободить через DestroyIcon (но если передадим в wx — wx сам освободит).
     """
-    if os.name != "nt":
+    if sys.platform != "win32":
         return None
     try:
         import ctypes
@@ -70,11 +73,13 @@ def _extract_hicon_from_exe(exe_path: str) -> int | None:
 
 def _hicon_to_bitmap(hicon: int, size: int = 32) -> wx.Bitmap | None:
     """Рендерит HICON в wx.Bitmap нужного размера через GDI."""
-    if os.name != "nt":
+    if sys.platform != "win32":
         return None
     try:
         import ctypes
         from ctypes import wintypes
+
+        import wx
 
         user32 = ctypes.windll.user32
         gdi32 = ctypes.windll.gdi32
@@ -144,8 +149,9 @@ def try_extract_exe_icon(exe_path: str) -> str | None:
     finally:
         # DestroyIcon — освобождаем HICON в любом случае
         try:
-            import ctypes
-            ctypes.windll.user32.DestroyIcon(hicon)
+            if sys.platform == "win32":
+                import ctypes
+                ctypes.windll.user32.DestroyIcon(hicon)
         except Exception:
             pass
 
@@ -153,6 +159,8 @@ def try_extract_exe_icon(exe_path: str) -> str | None:
         return None
 
     try:
+        import wx
+
         os.makedirs(ICON_CACHE_DIR, exist_ok=True)
         img = bmp.ConvertToImage()
         if img.SaveFile(cache_path, wx.BITMAP_TYPE_PNG):
@@ -163,7 +171,9 @@ def try_extract_exe_icon(exe_path: str) -> str | None:
     return None
 
 
-def resolve_program_icon(program: dict, software_dir_resolver) -> str | None:
+def resolve_program_icon(
+    program: dict, software_dir_resolver: Callable[[str], str],
+) -> str | None:
     """
     Возвращает лучший путь к иконке для программы.
 
@@ -251,6 +261,8 @@ class IconLoader:
 
     def _worker_loop(self) -> None:
         """Фоновая обработка очереди — декодирует и масштабирует bitmap."""
+        import wx
+
         while True:
             with self._lock:
                 if not self._queue:
@@ -280,6 +292,8 @@ class IconLoader:
 
     def _finalize(self, path: str, img: wx.Image) -> None:
         """Вызывается в UI-потоке: добавляет bitmap в ImageList и нотифицирует."""
+        import wx
+
         with self._lock:
             self._loading.discard(path)
             if path in self._cache:

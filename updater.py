@@ -4,6 +4,7 @@ import contextlib
 import json
 import logging
 import os
+import stat
 import struct
 import subprocess
 import sys
@@ -11,6 +12,7 @@ import tempfile
 import threading
 import urllib.request
 from collections.abc import Callable
+from typing import cast
 
 import config
 from core_impl import compare_versions
@@ -56,14 +58,17 @@ def _fetch_json(url: str, timeout: int = 5) -> dict:
         "Accept": "application/vnd.github+json",
     })
     with opener.open(req, timeout=timeout) as response:
-        return json.loads(response.read().decode("utf-8"))
+        data = json.loads(response.read().decode("utf-8"))
+    if not isinstance(data, dict):
+        raise ValueError("Release response must be a JSON object")
+    return data
 
 
 def _fetch_text(url: str, timeout: int = 5) -> str:
     opener = _build_opener(USER_AGENT)
     req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
     with opener.open(req, timeout=timeout) as response:
-        return response.read().decode("utf-8").strip()
+        return cast(bytes, response.read()).decode("utf-8").strip()
 
 
 def check_for_updates(current_version: str | None = None) -> dict:
@@ -342,17 +347,19 @@ def _apply_update_appimage(update_info: dict, emit) -> bool:
             )
 
         emit({"type": "status", "text": "Применение обновления..."})
-        os.chmod(new_path, 0o755)
+        # Preserve existing read/execute access without introducing write access
+        # for other users or carrying setuid/setgid bits to the downloaded file.
+        mode = stat.S_IMODE(os.stat(appimage_path).st_mode) & 0o755
+        os.chmod(new_path, mode | stat.S_IRUSR | stat.S_IWUSR | stat.S_IXUSR)
 
         # Атомарная замена: старый inode остаётся смонтирован у текущего
         # процесса, новый файл встаёт на имя .AppImage.
         os.replace(new_path, appimage_path)
-        os.chmod(appimage_path, 0o755)
 
         emit({"type": "done"})
         logging.info("AppImage обновлён, перезапуск.")
         # Перезапуск нового AppImage; текущий процесс завершается.
-        subprocess.Popen([appimage_path] + sys.argv[1:])
+        subprocess.Popen([appimage_path, *sys.argv[1:]])
         sys.exit(0)
 
     except SystemExit:
@@ -377,8 +384,8 @@ def check_program_update(program: dict, timeout: int = 5) -> dict:
     Возвращает dict: {"name", "current", "latest", "has_update", "url", "error"}.
     Работает только для записей с url и version; иначе поле error поясняет причину.
     """
-    from scanner import extract_version_from_filename
     from core_impl import compare_versions
+    from scanner import extract_version_from_filename
 
     result = {
         "name": program.get("name", ""),

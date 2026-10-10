@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import os
 import subprocess
+import sys
 
 import wx
 
@@ -145,7 +146,7 @@ class LogPanel(wx.Panel):
                           "Инфо", wx.OK | wx.ICON_INFORMATION)
             return
         try:
-            if os.name == "nt":
+            if sys.platform == "win32":
                 os.startfile(config.LOG_FILE)
             else:
                 subprocess.Popen(["xdg-open", config.LOG_FILE],

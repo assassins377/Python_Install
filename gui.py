@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import logging
 import os
 import sys
@@ -552,10 +553,8 @@ class MInstAllFrame(wx.Frame, MenuMixin, TreeMixin, DispatchMixin):
         dlg = wx.Dialog(self, title=_("about.title"),
                         style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
         if os.path.exists(config.ICON_FILE):
-            try:
+            with contextlib.suppress(Exception):
                 dlg.SetIcon(wx.Icon(config.ICON_FILE, wx.BITMAP_TYPE_ANY))
-            except Exception:
-                pass
 
         sizer = wx.BoxSizer(wx.VERTICAL)
         top = wx.BoxSizer(wx.HORIZONTAL)
