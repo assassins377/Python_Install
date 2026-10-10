@@ -202,6 +202,8 @@ def download_and_update(
 # PowerShell 5.1 is available on supported Windows versions; -LiteralPath avoids
 # wildcard interpretation, and the helper waits for the GUI process to exit.
 _WINDOWS_UPDATE_SCRIPT = r"""param([string]$Manifest)
+# Use this host's built-in modules even when launched from a PowerShell 7 parent.
+$env:PSModulePath = [System.IO.Path]::Combine($PSHOME, 'Modules')
 $ErrorActionPreference = 'Stop'
 $data = Get-Content -LiteralPath $Manifest -Raw -Encoding UTF8 | ConvertFrom-Json
 $workDir = Split-Path -Parent $Manifest
@@ -211,7 +213,17 @@ try {
     if ($parent -and -not $parent.WaitForExit(60000)) {
         throw 'Application did not close within 60 seconds; update cancelled.'
     }
-    $digest = (Get-FileHash -LiteralPath $data.new -Algorithm SHA256).Hash.ToLower()
+    # Hash directly with .NET; inherited PSModulePath can hide Get-FileHash
+    # when Windows PowerShell is launched by PowerShell 7.
+    $hasher = [System.Security.Cryptography.SHA256]::Create()
+    $stream = $null
+    try {
+        $stream = [System.IO.File]::OpenRead($data.new)
+        $digest = [BitConverter]::ToString($hasher.ComputeHash($stream)).Replace('-', '').ToLowerInvariant()
+    } finally {
+        if ($stream) { $stream.Dispose() }
+        $hasher.Dispose()
+    }
     if ($digest -ne $data.sha256) { throw 'Update checksum mismatch.' }
     # The onefile bootloader can hold the EXE briefly after its child exits.
     for ($attempt = 0; $attempt -lt 20; $attempt++) {

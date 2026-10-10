@@ -20,14 +20,16 @@ def check_helper() -> None:
     with tempfile.TemporaryDirectory(prefix="minstall-helper-test-") as temp:
         root = Path(temp) / "space % & ' 测试"
         root.mkdir()
-        for valid in (True, False):
-            current = root / ("valid.exe" if valid else "corrupt.exe")
+        for scenario in ("valid", "corrupt", "launch-failure"):
+            current = root / f"{scenario}.exe"
             current.write_bytes(b"previous version")
-            stage = root / ("stage-valid" if valid else "stage-corrupt")
+            stage = root / f"stage-{scenario}"
             stage.mkdir()
             candidate = stage / "update.exe"
             # A harmless Windows binary can be launched without app dependencies.
             shutil.copy2(Path(os.environ["SYSTEMROOT"]) / "System32" / "cmd.exe", candidate)
+            if scenario == "launch-failure":
+                candidate.write_bytes(b"not a Windows executable")
             digest = hashlib.sha256(candidate.read_bytes()).hexdigest()
             helper = stage / "update.ps1"
             helper.write_text(updater._WINDOWS_UPDATE_SCRIPT, encoding="utf-8-sig")
@@ -35,7 +37,7 @@ def check_helper() -> None:
             parent = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(1)"])
             manifest.write_text(json.dumps({
                 "pid": parent.pid, "current": str(current), "new": str(candidate),
-                "backup": str(stage / "previous.exe"), "sha256": digest if valid else "0" * 64,
+                "backup": str(stage / "previous.exe"), "sha256": "0" * 64 if scenario == "corrupt" else digest,
                 "arguments": "/c exit 0", "log": str(root / "update.log"),
             }, ensure_ascii=False), encoding="utf-8")
             try:
@@ -48,11 +50,11 @@ def check_helper() -> None:
                 parent.wait(timeout=5)
             log = root / "update.log"
             failure = log.read_text(encoding="utf-8-sig") if log.exists() else "No helper error log"
-            if valid:
+            if scenario == "valid":
                 if result.returncode != 0 or hashlib.sha256(current.read_bytes()).hexdigest() != digest:
                     raise RuntimeError(f"Windows update replacement failed ({result.returncode}): {failure!a}")
             elif result.returncode == 0 or current.read_bytes() != b"previous version":
-                raise RuntimeError("Corrupt update was not rejected")
+                raise RuntimeError(f"Update was not rejected/restored ({scenario}): {failure!a}")
             if stage.exists():
                 raise RuntimeError("Helper did not clean its staging directory")
 
