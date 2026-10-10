@@ -44,14 +44,17 @@ def load_profile(path: str) -> dict[str, Any] | None:
 
 def list_profiles() -> list[dict[str, Any]]:
     """Возвращает список всех профилей из papka profiles/."""
-    if not os.path.isdir(PROFILES_DIR):
-        return []
-
+    directories = [PROFILES_DIR]
+    if config.BUNDLE_DIR:
+        directories.insert(0, os.path.join(config.BUNDLE_DIR, "profiles"))
+    paths = {}
+    for directory in directories:
+        if os.path.isdir(directory):
+            for fname in os.listdir(directory):
+                if fname.lower().endswith(".json"):
+                    paths[fname] = os.path.join(directory, fname)
     profiles: list[dict[str, Any]] = []
-    for fname in sorted(os.listdir(PROFILES_DIR)):
-        if not fname.lower().endswith(".json"):
-            continue
-        path = os.path.join(PROFILES_DIR, fname)
+    for fname, path in sorted(paths.items()):
         profile = load_profile(path)
         if profile is not None:
             profile["_filename"] = fname

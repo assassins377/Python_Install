@@ -7,20 +7,21 @@ on:
       - 'v*.*.*'
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   test:
     runs-on: windows-latest
     steps:
-    - uses: actions/checkout@v7
-    - uses: actions/setup-python@v6
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+    - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
       with:
         python-version: '3.10'
     - run: |
         python -m pip install --upgrade pip
-        pip install psutil pytest
-    - run: python -m pytest tests/ -v --tb=short
+        pip install psutil pytest pytest-cov
+    - run: python -m pytest tests/ -v --tb=short --cov
+    - run: python -m coverage report --fail-under=40
 
   build:
     needs: test
@@ -36,10 +37,10 @@ jobs:
     name: Build ${{ matrix.arch }}
     steps:
     - name: Скачиваем код
-      uses: actions/checkout@v7
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
     - name: Устанавливаем ${{ matrix.arch }} Python 3.10
-      uses: actions/setup-python@v6
+      uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
       with:
         python-version: '3.10'
         architecture: ${{ matrix.python-arch }}
@@ -50,33 +51,17 @@ jobs:
         pip install pyinstaller pillow
         pip install -r requirements.txt
 
-    - name: Компилируем MInstAll_${{ matrix.arch }}.exe (--onefile)
-      run: |
-        pyinstaller --clean --noconsole --onefile --uac-admin --name MInstAll_${{ matrix.arch }} --icon=icons/system.png main.py
+    - name: Проверяем Windows-обновление и завершение GUI
+      run: python tools/check_windows_runtime.py
 
-    - name: Создаём .sha256 для onefile
-      shell: pwsh
-      run: |
-        $file = "dist/MInstAll_${{ matrix.arch }}.exe"
-        $sha = (Get-FileHash $file -Algorithm SHA256).Hash.ToLower()
-        "$sha  MInstAll_${{ matrix.arch }}.exe" | Out-File -FilePath "dist/MInstAll_${{ matrix.arch }}.exe.sha256" -Encoding ASCII -NoNewline
+    - name: Собираем EXE и portable с ресурсами и SHA-256
+      run: python tools/build_windows.py --arch ${{ matrix.arch }}
 
-    - name: Компилируем --onedir версию (быстрый запуск)
-      run: |
-        pyinstaller --clean --noconsole --uac-admin --name MInstAll_${{ matrix.arch }}_dir --icon=icons/system.png main.py
-
-    - name: Архивируем --onedir в .zip
-      shell: pwsh
-      run: |
-        $src = "dist/MInstAll_${{ matrix.arch }}_dir"
-        $zip = "dist/MInstAll_${{ matrix.arch }}_portable.zip"
-        Compress-Archive -Path "$src/*" -DestinationPath $zip -CompressionLevel Optimal
-        $sha = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower()
-        $zipName = "MInstAll_${{ matrix.arch }}_portable.zip"
-        "$sha  $zipName" | Out-File -FilePath "$zip.sha256" -Encoding ASCII -NoNewline
+    - name: Проверяем готовые сборки из чистой папки
+      run: python tools/smoke_windows.py --arch ${{ matrix.arch }}
 
     - name: Загружаем артефакты для финального release-job
-      uses: actions/upload-artifact@v7
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
       with:
         name: MInstAll_${{ matrix.arch }}_artifacts
         if-no-files-found: error
@@ -85,13 +70,20 @@ jobs:
           dist/MInstAll_${{ matrix.arch }}.exe.sha256
           dist/MInstAll_${{ matrix.arch }}_portable.zip
           dist/MInstAll_${{ matrix.arch }}_portable.zip.sha256
+          dist/smoke-${{ matrix.arch }}.json
 
   release:
+    permissions:
+      contents: write
     needs: build
     runs-on: ubuntu-latest
     steps:
     - name: Скачиваем код (для шаблона release notes)
-      uses: actions/checkout@v7
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+    - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+      with:
+        python-version: '3.10'
 
     - name: Определяем версию из тега
       id: version
@@ -100,26 +92,19 @@ jobs:
         echo "tag=$TAG" >> "$GITHUB_OUTPUT"
 
     - name: Скачиваем артефакты x86
-      uses: actions/download-artifact@v8
+      uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
       with:
         name: MInstAll_x86_artifacts
         path: dist/
 
     - name: Скачиваем артефакты x64
-      uses: actions/download-artifact@v8
+      uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
       with:
         name: MInstAll_x64_artifacts
         path: dist/
 
-    - name: Проверяем что собрали все варианты
-      run: |
-        ls -la dist/
-        test -f dist/MInstAll_x86.exe
-        test -f dist/MInstAll_x86.exe.sha256
-        test -f dist/MInstAll_x86_portable.zip
-        test -f dist/MInstAll_x64.exe
-        test -f dist/MInstAll_x64.exe.sha256
-        test -f dist/MInstAll_x64_portable.zip
+    - name: Проверяем контрольные суммы и комплектность обоих пакетов
+      run: python tools/verify_artifacts.py dist
 
     - name: Извлекаем SHA-256 и размеры
       id: hashes
@@ -184,7 +169,7 @@ jobs:
         echo "body_path=release_body.md" >> "$GITHUB_OUTPUT"
 
     - name: Создаём GitHub Release
-      uses: softprops/action-gh-release@v2
+      uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
       with:
         tag_name: ${{ github.ref_name }}
         name: MInstAll v${{ steps.version.outputs.tag }}

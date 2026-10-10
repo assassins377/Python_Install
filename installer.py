@@ -15,7 +15,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 import config
 import deps
-from utils import _download_file, _normalize_cmd_paths, build_cmd, dispatch_cmd
+from utils import _download_file, build_cmd, dispatch_cmd, redact_urls, split_command
 
 
 def check_disk_space(min_free_mb: int = 500) -> tuple[bool, str]:
@@ -70,7 +70,7 @@ def open_install_log(task_name: str) -> tuple[str, int]:
 def _append_fd_header(fd: int, text: str) -> None:
     """Дописывает строку в fd — низкоуровневый write, thread-safe."""
     with contextlib.suppress(OSError):
-        os.write(fd, f"{text}\n".encode("utf-8", errors="replace"))
+        os.write(fd, f"{redact_urls(text)}\n".encode("utf-8", errors="replace"))
 
 
 
@@ -85,8 +85,13 @@ def download_installer(
     os.makedirs(dest_dir, exist_ok=True)
 
     parsed = urllib.parse.urlparse(url)
-    fname = os.path.basename(parsed.path) or "installer.bin"
-    dest_path = os.path.join(dest_dir, fname)
+    # Exclusive, unpredictable names also protect callers sharing a directory.
+    # Retain only the extension: dispatch_cmd needs it to select msiexec, etc.
+    suffix = os.path.splitext(os.path.basename(parsed.path))[1].lower()
+    if suffix not in config.ALLOWED_CMD_EXTENSIONS:
+        suffix = ".bin"
+    fd, dest_path = tempfile.mkstemp(prefix="installer-", suffix=suffix, dir=dest_dir)
+    os.close(fd)
 
     def _wrap_cb(total: int, downloaded: int) -> None:
         if progress_cb:
@@ -389,6 +394,17 @@ class InstallWorker(threading.Thread):
                 self._active_procs.discard(proc)
 
     def _install_one_task(self, task: dict, emit_scroll: bool = True) -> None:
+        # Keep each download isolated through retries/hooks, then clean up on
+        # success, failure or cancellation. Local installers are never removed.
+        if task.get("url"):
+            with tempfile.TemporaryDirectory(prefix="minstall-download-", ignore_cleanup_errors=True) as download_dir:
+                self._install_task(task, emit_scroll, download_dir)
+        else:
+            self._install_task(task, emit_scroll)
+
+    def _install_task(
+        self, task: dict, emit_scroll: bool, download_dir: str | None = None,
+    ) -> None:
 
         item_id = task.get("_item_id")
         name = task["name"]
@@ -418,10 +434,8 @@ class InstallWorker(threading.Thread):
                 severity="progress",
             )
             try:
-                download_dir = os.path.join(
-                    tempfile.gettempdir(),
-                    "minstall_downloads",
-                )
+                if download_dir is None:
+                    raise RuntimeError("Не создана временная папка установки")
 
                 def _dl_progress(info: dict) -> None:
                     total = info.get("total", 0)
@@ -444,7 +458,7 @@ class InstallWorker(threading.Thread):
                 # заменяем на реально скачанный путь. Диспетчеризация по
                 # расширению — та же кросс-платформенная, что и для локальных
                 # файлов (см. core.dispatch_cmd).
-                parts = shlex.split(_normalize_cmd_paths(task["cmd"]), posix=True)
+                parts = split_command(task["cmd"])
                 user_args = parts[1:] if parts else []
                 cmd_args, script_path = dispatch_cmd(downloaded_path, user_args)
             except Exception as e:

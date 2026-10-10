@@ -6,15 +6,18 @@ on:
   pull_request:
     branches: [ "main" ]
 
+permissions:
+  contents: read
+
 jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
     - name: Скачиваем код
-      uses: actions/checkout@v7
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
     - name: Устанавливаем Python 3.10
-      uses: actions/setup-python@v6
+      uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
       with:
         python-version: '3.10'
 
@@ -30,10 +33,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - name: Скачиваем код
-      uses: actions/checkout@v7
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
     - name: Устанавливаем Python 3.10
-      uses: actions/setup-python@v6
+      uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
       with:
         python-version: '3.10'
 
@@ -51,10 +54,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - name: Скачиваем код
-      uses: actions/checkout@v7
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
     - name: Устанавливаем Python 3.10
-      uses: actions/setup-python@v6
+      uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
       with:
         python-version: '3.10'
 
@@ -77,10 +80,10 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
     - name: Скачиваем код
-      uses: actions/checkout@v7
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
     - name: Устанавливаем Python 3.10
-      uses: actions/setup-python@v6
+      uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
       with:
         python-version: '3.10'
 
@@ -95,9 +98,13 @@ jobs:
     - name: Проверяем порог покрытия
       run: python -m coverage report --fail-under=40
 
+    - name: Проверяем передачу запуска AppImage после завершения старого процесса
+      if: runner.os == 'Linux'
+      run: python tools/check_appimage_runtime.py
+
     - name: Загружаем отчёт о покрытии (Linux)
       if: matrix.os == 'ubuntu-latest'
-      uses: actions/upload-artifact@v7
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
       with:
         name: coverage-xml
         path: coverage.xml
@@ -116,10 +123,10 @@ jobs:
     name: Build ${{ matrix.arch }}
     steps:
     - name: Скачиваем код
-      uses: actions/checkout@v7
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
     - name: Устанавливаем ${{ matrix.arch }} Python 3.10
-      uses: actions/setup-python@v6
+      uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
       with:
         python-version: '3.10'
         architecture: ${{ matrix.python-arch }}
@@ -130,15 +137,25 @@ jobs:
         pip install pyinstaller pillow
         pip install -r requirements.txt
 
-    - name: Компилируем MInstAll_${{ matrix.arch }}.exe
-      run: |
-        pyinstaller --clean --noconsole --onefile --uac-admin --name MInstAll_${{ matrix.arch }} --icon=icons/system.png main.py
+    - name: Проверяем Windows-обновление и завершение GUI
+      run: python tools/check_windows_runtime.py
+
+    - name: Собираем EXE и portable с ресурсами и SHA-256
+      run: python tools/build_windows.py --arch ${{ matrix.arch }}
+
+    - name: Проверяем готовые сборки из чистой папки
+      run: python tools/smoke_windows.py --arch ${{ matrix.arch }}
 
     - name: Загружаем артефакт
-      uses: actions/upload-artifact@v7
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
       with:
         name: MInstAll_${{ matrix.arch }}_Executable
-        path: dist/MInstAll_${{ matrix.arch }}.exe
+        path: |
+          dist/MInstAll_${{ matrix.arch }}.exe
+          dist/MInstAll_${{ matrix.arch }}.exe.sha256
+          dist/MInstAll_${{ matrix.arch }}_portable.zip
+          dist/MInstAll_${{ matrix.arch }}_portable.zip.sha256
+          dist/smoke-${{ matrix.arch }}.json
         if-no-files-found: error
 
   verify-artifacts:
@@ -146,15 +163,17 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/download-artifact@v8
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+    - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+      with:
+        python-version: '3.10'
+    - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
       with:
         name: MInstAll_x86_Executable
         path: dist/
-    - uses: actions/download-artifact@v8
+    - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
       with:
         name: MInstAll_x64_Executable
         path: dist/
-    - name: Проверяем оба скачанных файла
-      run: |
-        test -s dist/MInstAll_x86.exe
-        test -s dist/MInstAll_x64.exe
+    - name: Проверяем контрольные суммы и комплектность обоих пакетов
+      run: python tools/verify_artifacts.py dist

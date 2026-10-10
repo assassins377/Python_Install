@@ -47,6 +47,8 @@ _current_lang: str = DEFAULT_LANGUAGE
 def _load_translations_file(lang: str) -> dict[str, str]:
     """Читает i18n/<lang>.json. При ошибке — пустой dict."""
     path = os.path.join(I18N_DIR, f"{lang}.json")
+    if not os.path.exists(path) and config.BUNDLE_DIR:
+        path = os.path.join(config.BUNDLE_DIR, "i18n", f"{lang}.json")
     if not os.path.exists(path):
         return {}
     try:

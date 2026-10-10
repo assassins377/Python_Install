@@ -20,12 +20,15 @@ from utils import (  # noqa: F401
 def load_programs_from_json() -> dict[str, list[dict]]:
     import json
 
-    if not os.path.exists(config.CONFIG_FILE):
-        logging.error(f"Файл конфигурации не найден: {config.CONFIG_FILE}")
+    catalog_path = config.CONFIG_FILE
+    if not os.path.exists(catalog_path) and config.BUNDLE_DIR:
+        catalog_path = os.path.join(config.BUNDLE_DIR, "programs.json")
+    if not os.path.exists(catalog_path):
+        logging.error(f"Файл конфигурации не найден: {catalog_path}")
         return {}
 
     try:
-        with open(config.CONFIG_FILE, encoding="utf-8") as f:
+        with open(catalog_path, encoding="utf-8") as f:
             data = json.load(f)
     except Exception as e:
         logging.error(f"Не удалось прочитать {config.CONFIG_FILE}: {e}")

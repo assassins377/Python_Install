@@ -4,13 +4,44 @@ import contextlib
 import hashlib
 import logging
 import os
+import re
 import shlex
 import subprocess
 import sys
 import urllib.request
 from typing import Protocol
+from urllib.parse import urlsplit, urlunsplit
 
 import config
+
+
+def redact_url(url: str) -> str:
+    """Keep the destination useful for diagnostics without URL credentials/tokens."""
+    try:
+        parts = urlsplit(url if "://" in url else "//" + url)
+        return urlunsplit((parts.scheme, parts.netloc.rsplit("@", 1)[-1],
+                           parts.path, "REDACTED" if parts.query else "", ""))
+    except ValueError:
+        return "[invalid URL]"
+
+
+def redact_urls(text: str) -> str:
+    return re.sub(r"[a-zA-Z][a-zA-Z0-9+.-]*://[^\s<>\"']+",
+                  lambda match: redact_url(match.group()), text)
+
+
+class _RedactURLs(logging.Filter):
+    def filter(self, record: logging.LogRecord) -> bool:
+        record.msg = redact_urls(record.getMessage())
+        record.args = ()
+        if record.exc_info:
+            record.exc_text = redact_urls(logging.Formatter().formatException(record.exc_info))
+            record.exc_info = None
+        if record.exc_text:
+            record.exc_text = redact_urls(record.exc_text)
+        if record.stack_info:
+            record.stack_info = redact_urls(record.stack_info)
+        return True
 
 
 def setup_logging(level: int = logging.INFO) -> None:
@@ -27,6 +58,9 @@ def setup_logging(level: int = logging.INFO) -> None:
         _fh = logging.FileHandler(config.LOG_FILE)
         _fh.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(message)s"))
         _logger.addHandler(_fh)
+    for handler in logging.getLogger().handlers:
+        if not any(isinstance(f, _RedactURLs) for f in handler.filters):
+            handler.addFilter(_RedactURLs())
 
 
 def resolve_path(rel_path: str) -> str:
@@ -41,13 +75,66 @@ def _normalize_cmd_paths(cmd_str: str) -> str:
     return cmd_str.replace("\\", "/")
 
 
+def split_windows_command(command: str) -> list[str]:
+    """Parse Windows double quotes/backslashes without POSIX escape handling.
+
+    Follows the MS C runtime quoting rules used by subprocess.list2cmdline.
+    Reject an unfinished quote instead of silently accepting a malformed command.
+    """
+    args: list[str] = []
+    pos = 0
+    while pos < len(command):
+        while pos < len(command) and command[pos] in " \t":
+            pos += 1
+        if pos == len(command):
+            break
+        value: list[str] = []
+        quoted = False
+        while pos < len(command):
+            if command[pos] in " \t" and not quoted:
+                break
+            slashes = 0
+            while pos < len(command) and command[pos] == "\\":
+                slashes += 1
+                pos += 1
+            if pos < len(command) and command[pos] == '"':
+                value.append("\\" * (slashes // 2))
+                if slashes % 2:
+                    value.append('"')
+                elif quoted and pos + 1 < len(command) and command[pos + 1] == '"':
+                    value.append('"')
+                    pos += 1
+                else:
+                    quoted = not quoted
+                pos += 1
+            else:
+                value.append("\\" * slashes)
+                if pos == len(command) or (command[pos] in " \t" and not quoted):
+                    break
+                value.append(command[pos])
+                pos += 1
+        if quoted:
+            raise ValueError("Незакрытая кавычка в команде")
+        args.append("".join(value))
+    return args
+
+
+def split_command(command: str) -> list[str]:
+    if os.name == "nt":
+        return split_windows_command(command)
+    return shlex.split(_normalize_cmd_paths(command), posix=True)
+
+
 def validate_cmd(cmd_str: str) -> str | None:
     cmd_str = _normalize_cmd_paths(cmd_str)
     for char in config.SHELL_METACHARACTERS:
         if char in cmd_str:
             return f"Недопустимый символ '{char}' в команде"
 
-    parts = shlex.split(cmd_str, posix=(os.name != "nt"))
+    try:
+        parts = split_command(cmd_str)
+    except ValueError as exc:
+        return str(exc)
     if not parts:
         return "Пустая команда"
 
@@ -152,7 +239,7 @@ def _build_opener(user_agent: str) -> urllib.request.OpenerDirector:
                     headers, fp,
                 )
             logging.info(
-                f"HTTP {code} → {newurl} (редирект "
+                f"HTTP {code} → {redact_url(newurl)} (редирект "
                 f"{req._redirect_count}/{self.max_redirects})"  # type: ignore[attr-defined]
             )
             return super().redirect_request(
@@ -164,7 +251,7 @@ def _build_opener(user_agent: str) -> urllib.request.OpenerDirector:
     proxy_url = os.environ.get("HTTPS_PROXY") or os.environ.get("https_proxy") or os.environ.get("HTTP_PROXY") or os.environ.get("http_proxy")
     if proxy_url:
         handlers.append(urllib.request.ProxyHandler({"http": proxy_url, "https": proxy_url}))
-        logging.info(f"Используется прокси: {proxy_url}")
+        logging.info(f"Используется прокси: {redact_url(proxy_url)}")
 
     return urllib.request.build_opener(*handlers)
 
@@ -189,8 +276,8 @@ def _download_file(
     downloaded = 0
 
     opener = _build_opener(user_agent)
-    req = urllib.request.Request(url, headers={"User-Agent": user_agent})
     try:
+        req = urllib.request.Request(url, headers={"User-Agent": user_agent})
         with opener.open(req, timeout=config.DOWNLOAD_TIMEOUT) as resp:
             total = 0
             try:
@@ -211,13 +298,15 @@ def _download_file(
                     if progress_cb:
                         with contextlib.suppress(Exception):
                             progress_cb(total=total, downloaded=downloaded)
+                if total > 0 and downloaded != total:
+                    raise ValueError("Файл скачан не полностью")
     except Exception as e:
         try:
             if os.path.exists(dst_path):
                 os.remove(dst_path)
         except OSError:
             pass
-        raise RuntimeError(f"Ошибка скачивания {url}: {e}") from e
+        raise RuntimeError(f"Ошибка скачивания {redact_url(url)}: {redact_urls(str(e))}") from None
 
     return sha.hexdigest().lower()
 
@@ -265,7 +354,7 @@ def build_cmd(cmd_str: str) -> tuple[list[str], str]:
         raise ValueError(err)
 
     try:
-        parts = shlex.split(cmd_clean, posix=(os.name != "nt"))
+        parts = split_command(cmd_clean)
     except ValueError as e:
         raise ValueError(f"Ошибка парсинга команды: {e}") from e
 
@@ -290,7 +379,7 @@ def command_needs_root(cmd_str: str) -> bool:
     if not cmd_str:
         return False
     try:
-        parts = shlex.split(_normalize_cmd_paths(cmd_str), posix=(os.name != "nt"))
+        parts = split_command(cmd_str)
     except ValueError:
         parts = _normalize_cmd_paths(cmd_str).split()
     if not parts:
