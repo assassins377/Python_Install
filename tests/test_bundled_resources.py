@@ -33,7 +33,7 @@ def test_bundled_resources_and_writable_overrides(tmp_path, monkeypatch):
     monkeypatch.setattr(i18n, "I18N_DIR", str(external / "i18n"))
     monkeypatch.setattr(profiles, "PROFILES_DIR", str(external / "profiles"))
     assert diagnostics.resource_report()["ok"]
-    assert config.resource_path("icons/system.png") == str(bundle / "icons" / "system.png")
+    assert Path(config.resource_path("icons/system.png")) == bundle / "icons" / "system.png"
     assert core_impl.load_programs_from_json()["Default"][0]["name"] == "Demo"
     assert scanner.save_merged_to_disk({"Custom": [{"name": "User", "cmd": "user.exe"}]})
     assert "Custom" in core_impl.load_programs_from_json()
