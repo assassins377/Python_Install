@@ -9,6 +9,7 @@ import subprocess
 import sys
 import tempfile
 import threading
+import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -20,7 +21,7 @@ def check_helper() -> None:
     with tempfile.TemporaryDirectory(prefix="minstall-helper-test-") as temp:
         root = Path(temp) / "space % & ' 测试"
         root.mkdir()
-        for scenario in ("valid", "corrupt", "launch-failure"):
+        for scenario in ("valid-custom-modules", "valid-unset-modules", "corrupt", "launch-failure"):
             current = root / f"{scenario}.exe"
             current.write_bytes(b"previous version")
             stage = root / f"stage-{scenario}"
@@ -35,11 +36,14 @@ def check_helper() -> None:
             helper.write_text(updater._WINDOWS_UPDATE_SCRIPT, encoding="utf-8-sig")
             manifest = stage / "update.json"
             log = root / f"{scenario}.log"
+            environment_report = root / f"{scenario}-environment.txt"
+            module_path = r"C:\User Modules\测试;C:\Machine Modules" if scenario == "valid-custom-modules" else None
             parent = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(1)"])
             manifest.write_text(json.dumps({
                 "pid": parent.pid, "current": str(current), "new": str(candidate),
                 "backup": str(stage / "previous.exe"), "sha256": "0" * 64 if scenario == "corrupt" else digest,
-                "arguments": "/c exit 0", "log": str(log),
+                "arguments": f'/d /u /c "(set PSModulePath & set PYINSTALLER_RESET_ENVIRONMENT) > {environment_report.name}"',
+                "log": str(log), "ps_module_path": module_path,
             }, ensure_ascii=False), encoding="utf-8")
             try:
                 result = subprocess.run(
@@ -50,9 +54,19 @@ def check_helper() -> None:
             finally:
                 parent.wait(timeout=5)
             failure = log.read_text(encoding="utf-8-sig") if log.exists() else "No helper error log"
-            if scenario == "valid":
+            if scenario.startswith("valid"):
                 if result.returncode != 0 or hashlib.sha256(current.read_bytes()).hexdigest() != digest:
                     raise RuntimeError(f"Windows update replacement failed ({result.returncode}): {failure!a}")
+                deadline = time.monotonic() + 5
+                while time.monotonic() < deadline:
+                    text = environment_report.read_text(encoding="utf-16-le") if environment_report.exists() else ""
+                    if "PYINSTALLER_RESET_ENVIRONMENT=1" in text:
+                        break
+                    time.sleep(0.05)
+                inherited = {key.casefold(): value for line in text.splitlines() if "=" in line
+                             for key, value in [line.split("=", 1)]}
+                if inherited.get("psmodulepath") != module_path or inherited.get("pyinstaller_reset_environment") != "1":
+                    raise RuntimeError(f"Updated app received the wrong environment: {inherited!a}")
             elif result.returncode == 0 or current.read_bytes() != b"previous version":
                 raise RuntimeError(f"Update was not rejected/restored ({scenario}): {failure!a}")
             if stage.exists():

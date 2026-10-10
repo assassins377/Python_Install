@@ -137,7 +137,13 @@ def test_appimage_replacement_preserves_restricted_access(tmp_path, monkeypatch,
         assert actual & 0o022 == 0
         assert actual & 0o055 == mode & 0o055
     assert events[-1]["type"] == "done"
-    launch.assert_called_once_with([str(current), "--help"])
+    launch.assert_called_once()
+    args = launch.call_args.args[0]
+    assert args[:2] == ["/bin/sh", "-c"]
+    assert args[4:6] == [str(os.getpid()), updater.config.LOG_FILE]
+    assert args[6:] == [str(current), "--help"]
+    assert launch.call_args.kwargs["start_new_session"] is True
+    assert launch.call_args.kwargs["env"]["PYINSTALLER_RESET_ENVIRONMENT"] == "1"
 
 
 def test_failed_replace_cleans_download_and_keeps_current(tmp_path, monkeypatch):

@@ -106,3 +106,38 @@ def test_windows_helper_launch_failure_cleans_staging(tmp_path, monkeypatch):
     assert current.read_bytes() == b"old"
     assert list(tmp_path.iterdir()) == [current]
     assert events[-1]["type"] == "error"
+
+
+@pytest.mark.parametrize("module_path", [None, r"C:\User Modules;C:\Machine Modules"])
+def test_windows_manifest_preserves_original_module_path(tmp_path, monkeypatch, module_path):
+    current = tmp_path / "app.exe"
+    current.write_bytes(b"old")
+    monkeypatch.setattr(updater.sys, "executable", str(current))
+    if module_path is None:
+        monkeypatch.delenv("PSMODULEPATH", raising=False)
+    else:
+        monkeypatch.setenv("PSMODULEPATH", module_path)
+
+    def download(url, dst, size, emit):
+        Path(dst).write_bytes(b"new")
+        return "a" * 64
+
+    monkeypatch.setattr(updater, "_download_with_progress", download)
+    launch = Mock()
+    monkeypatch.setattr(updater.subprocess, "Popen", launch)
+    assert updater._apply_update_windows({"url": "https://example.com/app", "sha256": "a" * 64}, lambda _: None)
+    manifest = json.loads(Path(launch.call_args.args[0][-1]).read_text(encoding="utf-8"))
+    assert manifest["ps_module_path"] == module_path
+
+
+def test_appimage_restart_preserves_arguments_and_environment(monkeypatch):
+    arguments = ["space and 'quotes'", "$(touch unwanted)", "", "日本語"]
+    monkeypatch.setattr(updater.sys, "argv", ["app.AppImage", *arguments])
+    monkeypatch.setenv("MINSTALL_CUSTOM_ENV", "preserve me")
+    monkeypatch.delenv("PYINSTALLER_RESET_ENVIRONMENT", raising=False)
+    launch = Mock()
+    monkeypatch.setattr(updater.subprocess, "Popen", launch)
+    updater._launch_appimage_restart("/path with spaces/app.AppImage")
+    assert launch.call_args.args[0][6:] == ["/path with spaces/app.AppImage", *arguments]
+    assert launch.call_args.kwargs["env"]["MINSTALL_CUSTOM_ENV"] == "preserve me"
+    assert launch.call_args.kwargs["env"]["PYINSTALLER_RESET_ENVIRONMENT"] == "1"

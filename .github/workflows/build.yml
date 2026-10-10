@@ -98,6 +98,10 @@ jobs:
     - name: Проверяем порог покрытия
       run: python -m coverage report --fail-under=40
 
+    - name: Проверяем передачу запуска AppImage после завершения старого процесса
+      if: runner.os == 'Linux'
+      run: python tools/check_appimage_runtime.py
+
     - name: Загружаем отчёт о покрытии (Linux)
       if: matrix.os == 'ubuntu-latest'
       uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7

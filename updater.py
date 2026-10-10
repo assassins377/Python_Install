@@ -238,7 +238,16 @@ try {
     }
     $start = @{ FilePath = $data.current; WorkingDirectory = (Split-Path -Parent $data.current) }
     if ($data.arguments) { $start.ArgumentList = $data.arguments }
-    Start-Process @start
+    # Resolve the built-in cmdlet before restoring the application's environment.
+    $startProcess = Get-Command Start-Process -CommandType Cmdlet
+    $helperModulePath = $env:PSModulePath
+    try {
+        [Environment]::SetEnvironmentVariable('PSModulePath', $data.ps_module_path, 'Process')
+        $env:PYINSTALLER_RESET_ENVIRONMENT = '1'
+        & $startProcess @start
+    } finally {
+        $env:PSModulePath = $helperModulePath
+    }
     Remove-Item -LiteralPath $data.backup -Force
 } catch {
     $failure = $_.Exception.Message
@@ -288,6 +297,7 @@ def _apply_update_windows(update_info: dict, emit) -> bool:
                 "pid": os.getpid(), "current": current_exe, "new": new_path,
                 "backup": os.path.join(work_dir, "previous.exe"), "sha256": expected_sha,
                 "arguments": subprocess.list2cmdline(sys.argv[1:]), "log": config.LOG_FILE,
+                "ps_module_path": os.environ.get("PSMODULEPATH"),
             }, stream, ensure_ascii=False)
         subprocess.Popen(
             ["powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
@@ -308,12 +318,42 @@ def _apply_update_windows(update_info: dict, emit) -> bool:
                 shutil.rmtree(work_dir)
 
 
+# A fixed shell program with positional arguments needs no Python installation
+# outside the AppImage. Never interpolate paths, options or URLs into this code.
+_APPIMAGE_RESTART_SCRIPT = r"""parent_pid=$1
+log_file=$2
+shift 2
+remaining=60
+while kill -0 "$parent_pid" 2>/dev/null; do
+    if [ "$remaining" -le 0 ]; then
+        printf '%s\n' 'AppImage restart cancelled: previous process did not exit.' >> "$log_file"
+        exit 1
+    fi
+    sleep 1
+    remaining=$((remaining - 1))
+done
+exec "$@" 2>> "$log_file"
+"""
+
+
+def _launch_appimage_restart(appimage_path: str) -> None:
+    # A new frozen instance must unpack its own resources after the old one exits.
+    # https://pyinstaller.org/en/stable/common-issues-and-pitfalls.html
+    environment = {**os.environ, "PYINSTALLER_RESET_ENVIRONMENT": "1"}
+    subprocess.Popen(
+        ["/bin/sh", "-c", _APPIMAGE_RESTART_SCRIPT, "minstall-restart",
+         str(os.getpid()), config.LOG_FILE, appimage_path, *sys.argv[1:]],
+        env=environment, start_new_session=True,
+    )
+
+
 def _apply_update_appimage(update_info: dict, emit) -> bool:
     """Атомарно заменяет запущенный AppImage и перезапускает его.
 
     AppImage при запуске монтирует свой squashfs с исходного inode, поэтому
     замена файла по имени не ломает текущий процесс — он дорабатывает до
-    закрытия GUI, а новый AppImage стартует уже с обновлённого файла.
+    закрытия GUI. Отдельный помощник ждёт завершения текущего PID, затем
+    запускает новый AppImage: сохранение состояния старым окном уже закончено.
     """
     appimage_path = os.environ.get("APPIMAGE") or sys.executable
     if not (appimage_path.lower().endswith(".appimage") or os.environ.get("APPIMAGE")):
@@ -349,7 +389,7 @@ def _apply_update_appimage(update_info: dict, emit) -> bool:
         # процесса, новый файл встаёт на имя .AppImage.
         os.replace(new_path, appimage_path)
 
-        subprocess.Popen([appimage_path, *sys.argv[1:]])
+        _launch_appimage_restart(appimage_path)
         emit({"type": "done"})
         return True
     except Exception as exc:

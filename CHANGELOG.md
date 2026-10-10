@@ -4,6 +4,8 @@ All notable changes to MInstAll.
 
 ## [Unreleased]
 
+## [2.2.2] — 2026-10-10
+
 ### Fixed
 - Redact URL credentials, query strings and fragments in proxy, download and exception logs.
 - Isolate installer downloads with unique files and per-task temporary directories; remove them after installation and reject truncated downloads.
@@ -11,6 +13,8 @@ All notable changes to MInstAll.
 - Complete GUI self-updates by closing the main window on its event thread, saving state and stopping timers.
 - Require a valid, available SHA-256 before downloading or applying an application update.
 - Stage Windows updates in a unique directory and use a UTF-8 manifest for the replacement helper, preserving Unicode paths and restart arguments.
+- Preserve the application's original PowerShell module search path when restarting after a Windows update.
+- Wait for the old AppImage process to finish saving state before restarting; start updated frozen applications with independent PyInstaller resources.
 - Bundle catalog, translations, profiles and icons in both Windows distributions; preserve editable sidecar overrides.
 
 ### Changed
