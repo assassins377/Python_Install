@@ -32,7 +32,7 @@ jobs:
       - name: Configure pinned experimental toolchain
         run: cmake --preset windows-${{ matrix.arch }}
       - name: Build prototype and tests
-        run: cmake --build --preset windows-${{ matrix.arch }} --parallel 2
+        run: cmake --build --preset windows-${{ matrix.arch }} --target minstall-native native-tests --parallel 2
       - name: Test catalog, CLI and GUI lifecycle
         run: ctest --preset windows-${{ matrix.arch }}
       - name: Stage separate prototype package and inspect PE
@@ -86,7 +86,7 @@ jobs:
       - name: Build GUI, core and tests with coverage
         run: |
           cmake -S native -B native/out/linux -G Ninja -DCMAKE_BUILD_TYPE=Debug -DMINSTALL_COVERAGE=ON
-          cmake --build native/out/linux --parallel 2
+          cmake --build native/out/linux --target minstall-native native-tests --parallel 2
       - name: Test and enforce native coverage
         run: |
           ctest --test-dir native/out/linux --output-on-failure

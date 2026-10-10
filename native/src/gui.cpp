@@ -6,7 +6,7 @@
 #include <wx/splitter.h>
 #include <wx/treectrl.h>
 
-namespace {
+namespace minstall_ui {
 minstall::Options gui_options;
 int gui_result = 0;
 
@@ -112,16 +112,16 @@ public:
         }
     }
 };
-}  // namespace
+}  // namespace minstall_ui
 
-wxIMPLEMENT_APP_NO_MAIN(CatalogApp);
+wxIMPLEMENT_APP_NO_MAIN(minstall_ui::CatalogApp);
 
 int run_gui(const minstall::Options& options) {
-    gui_options = options;
-    gui_result = 0;
+    minstall_ui::gui_options = options;
+    minstall_ui::gui_result = 0;
     int argc = 1;
     char name[] = "minstall-native";
     char* argv[] = {name, nullptr};
     const int result = wxEntry(argc, argv);
-    return result == 0 ? gui_result : 3;
+    return result == 0 ? minstall_ui::gui_result : 3;
 }

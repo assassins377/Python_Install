@@ -79,6 +79,10 @@ if(MINSTALL_BUILD_GUI)
     target_sources(minstall-native PRIVATE src/gui.cpp)
     target_compile_definitions(minstall-native PRIVATE MINSTALL_WITH_GUI)
     target_link_libraries(minstall-native PRIVATE wx::core wx::base)
+    # Keep /WX and -Werror for our code; do not promote upstream header warnings.
+    target_include_directories(minstall-native SYSTEM PRIVATE
+        $<TARGET_PROPERTY:wx::core,INTERFACE_INCLUDE_DIRECTORIES>
+        $<TARGET_PROPERTY:wx::base,INTERFACE_INCLUDE_DIRECTORIES>)
 endif()
 
 set(catalog_source "${CMAKE_CURRENT_SOURCE_DIR}/../programs.json")
