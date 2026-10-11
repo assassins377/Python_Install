@@ -74,6 +74,17 @@ void parser_tests() {
         rejects([&] { minstall::parse_catalog(invalid); });
     }
 
+    // The JSON lexer treats a raw NUL as end-of-input, even with explicit
+    // iterators. A valid prefix must never hide a corrupt or second document.
+    for (const auto& suffix : {std::string{}, std::string("hidden-tail"), std::string(sample)}) {
+        const auto nul_terminated = std::string(sample) + '\0' + suffix;
+        rejects([&] { minstall::parse_catalog(nul_terminated); });
+    }
+    rejects([&] { minstall::parse_catalog(std::string(1, '\0') + sample); });
+    std::string embedded_nul = sample;
+    embedded_nul.insert(embedded_nul.find("never-run"), 1, '\0');
+    rejects([&] { minstall::parse_catalog(embedded_nul); });
+
     auto root = Json::parse(sample);
     const auto original = root["categories"]["Я — первая"][0];
     const std::vector<std::pair<std::string, Json>> invalid_fields = {
@@ -152,6 +163,31 @@ void file_and_cli_tests() {
              {"--list", "--gui-smoke"}, {"--gui-smoke", "--gui-smoke"}}) {
         rejects([&] { minstall::parse_options(args, default_path); });
     }
+
+    // Exercise the binary file reader and listing path, not just the parser.
+    // Keep this generated fixture beside the test executable, outside sources.
+    const auto nul_path = default_path.parent_path() / "catalog-nul-test.json";
+    struct RemoveFixture {
+        std::filesystem::path path;
+        ~RemoveFixture() {
+            std::error_code error;
+            std::filesystem::remove(path, error);
+        }
+    } cleanup{nul_path};
+    {
+        std::ofstream fixture(nul_path, std::ios::binary);
+        fixture << sample;
+        fixture.put('\0');
+        fixture << "hidden-tail";
+        fixture.close();
+        check(static_cast<bool>(fixture), "NUL fixture written completely");
+    }
+    rejects([&] { minstall::load_catalog(nul_path); });
+    options = minstall::parse_options({"--list", "--catalog", nul_path.u8string()}, default_path);
+    std::ostringstream nul_output;
+    std::ostringstream nul_errors;
+    rejects([&] { minstall::run_cli(options, nul_output, nul_errors); });
+    check(nul_output.str().empty() && nul_errors.str().empty(), "NUL catalog produces no partial list");
 }
 }  // namespace
 

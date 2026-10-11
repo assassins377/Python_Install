@@ -83,6 +83,9 @@ std::size_t Catalog::program_count() const {
 
 Catalog parse_catalog(std::string_view bytes) {
     require(bytes.size() <= max_catalog_bytes, "Catalog exceeds the 8 MiB limit");
+    // nlohmann's lexer also treats a raw NUL as EOF. Check the entire input
+    // before parsing so a valid prefix cannot conceal unvalidated trailing data.
+    require(bytes.find('\0') == std::string_view::npos, "Catalog contains a NUL byte");
     // An optional UTF-8 BOM is accepted; all other decoding is strict JSON UTF-8.
     std::vector<std::set<std::string>> object_keys;
     std::size_t events = 0;
