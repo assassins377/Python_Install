@@ -1,4 +1,5 @@
 #include "minstall/app.hpp"
+#include "minstall/metadata.hpp"
 #include "minstall/storage.hpp"
 
 #include <algorithm>
@@ -17,6 +18,7 @@ int gui_result = 0;
 
 enum MenuId {
     id_add_program = wxID_HIGHEST + 1,
+    id_edit_program,
     id_save_catalog,
     id_parallel,
     id_autoscan,
@@ -112,6 +114,58 @@ private:
     wxTextCtrl* category_ = nullptr;
 };
 
+class EditProgramDialog final : public wxDialog {
+public:
+    EditProgramDialog(wxWindow* parent, const minstall::Program& program)
+        : wxDialog(parent, wxID_ANY, utf8("Изменить сведения о программе"), wxDefaultPosition, wxDefaultSize,
+                   wxDEFAULT_DIALOG_STYLE | wxRESIZE_BORDER) {
+        auto* layout = new wxBoxSizer(wxVERTICAL);
+        auto* source = new wxStaticText(this, wxID_ANY,
+            utf8("Файл: " + minstall::display_text(program.text("source_path"))));
+        source->Wrap(600);
+        layout->Add(source, 0, wxEXPAND | wxALL, 16);
+        const auto field = [this, layout](const char* label, const std::string& value, bool multiline) {
+            layout->Add(new wxStaticText(this, wxID_ANY, utf8(label)), 0, wxLEFT | wxRIGHT | wxTOP, 16);
+            auto* input = new wxTextCtrl(this, wxID_ANY, utf8(value), wxDefaultPosition,
+                multiline ? wxSize(-1, 140) : wxDefaultSize, multiline ? wxTE_MULTILINE : 0);
+            layout->Add(input, multiline ? 1 : 0, wxEXPAND | wxLEFT | wxRIGHT | wxTOP, 16);
+            return input;
+        };
+        name_ = field("Название", program.name(), false);
+        version_ = field("Версия (необязательно)", program.text("version"), false);
+        description_ = field("Описание", program.text("desc"), true);
+        layout->Add(new wxStaticText(this, wxID_ANY,
+            utf8("Сведения сохранятся после перезапуска. Сам файл не изменится.")), 0, wxALL, 16);
+        auto* buttons = new wxStdDialogButtonSizer();
+        auto* save = new wxButton(this, wxID_OK, utf8("Сохранить"));
+        save->SetDefault();
+        buttons->AddButton(save);
+        buttons->AddButton(new wxButton(this, wxID_CANCEL, utf8("Отмена")));
+        buttons->Realize();
+        layout->Add(buttons, 0, wxEXPAND | wxLEFT | wxRIGHT | wxBOTTOM, 16);
+        const auto update_save = [this, save] {
+            save->Enable(!name_->GetValue().Trim(true).Trim(false).IsEmpty());
+        };
+        name_->Bind(wxEVT_TEXT, [update_save](wxCommandEvent&) { update_save(); });
+        update_save();
+        SetSizerAndFit(layout);
+        SetMinSize(wxSize(660, GetSize().y));
+        SetSize(GetMinSize());
+        CentreOnParent();
+        name_->SetFocus();
+        name_->SelectAll();
+    }
+    minstall::ProgramDetails details() const {
+        return {name_->GetValue().Trim(true).Trim(false).ToStdString(wxConvUTF8),
+                version_->GetValue().Trim(true).Trim(false).ToStdString(wxConvUTF8),
+                description_->GetValue().ToStdString(wxConvUTF8)};
+    }
+private:
+    wxTextCtrl* name_ = nullptr;
+    wxTextCtrl* version_ = nullptr;
+    wxTextCtrl* description_ = nullptr;
+};
+
 std::string program_details(const minstall::Program& program) {
     const auto version = program.text("version");
     const auto description = program.text("desc");
@@ -147,7 +201,7 @@ bool same_catalog(const minstall::Catalog& left, const minstall::Catalog& right)
 
 class CatalogFrame final : public wxFrame {
 public:
-    CatalogFrame(minstall::Catalog catalog, const minstall::Options& options)
+    explicit CatalogFrame(const minstall::Options& options)
         : wxFrame(nullptr, wxID_ANY, utf8(minstall::prototype_version), wxDefaultPosition, wxSize(960, 620)),
           options_(options), refresh_timer_(this) {
         auto* panel = new wxPanel(this);
@@ -175,10 +229,24 @@ public:
             } else {
                 details_->ChangeValue(utf8("Выберите программу в категории."));
             }
+            update_edit_menu();
+        });
+        tree_->Bind(wxEVT_TREE_ITEM_ACTIVATED, [this](wxTreeEvent& event) {
+            if (event.GetItem().IsOk() && dynamic_cast<ProgramData*>(tree_->GetItemData(event.GetItem()))) {
+                tree_->SelectItem(event.GetItem());
+                edit_program();
+            } else {
+                event.Skip();
+            }
         });
         CreateStatusBar();
         create_menu();
-        show_catalog(std::move(catalog));
+        if (options_.explicit_catalog) {
+            show_catalog(minstall::load_programs(options_));
+        } else {
+            show_catalog({});
+            refresh_catalog();
+        }
         Bind(wxEVT_TIMER, [this](wxTimerEvent&) { refresh_catalog(); }, refresh_timer_.GetId());
         set_watcher_interval(3000);
         SetMinSize(wxSize(640, 400));
@@ -188,7 +256,7 @@ public:
     bool smoke_check() {
         const auto* menus = GetMenuBar();
         const bool scanning = !options_.explicit_catalog;
-        if (!menus || menus->GetMenuCount() != 4 ||
+        if (scan_failed_ || !menus || menus->GetMenuCount() != 4 ||
             menus->GetMenuLabelText(0) != utf8("Файл") ||
             menus->GetMenuLabelText(1) != utf8("Настройки") ||
             menus->GetMenuLabelText(2) != utf8("Профили") ||
@@ -221,9 +289,10 @@ public:
         if (first_program_.IsOk()) {
             tree_->SelectItem(first_program_);
             const auto* data = static_cast<ProgramData*>(tree_->GetItemData(first_program_));
-            return details_->GetValue() == utf8(program_details(data->program));
+            return details_->GetValue() == utf8(program_details(data->program)) &&
+                   menus->IsEnabled(id_edit_program) == scanning;
         }
-        return details_->GetValue() == utf8(empty_message());
+        return details_->GetValue() == utf8(empty_message()) && !menus->IsEnabled(id_edit_program);
     }
 
 private:
@@ -242,6 +311,9 @@ private:
                      utf8("Скопировать установочный файл в software; исходник останется на месте."))
             ->Enable(!options_.explicit_catalog);
         Bind(wxEVT_MENU, [this](wxCommandEvent&) { add_program(); }, id_add_program);
+        file->Append(id_edit_program, utf8("Изменить сведения…\tCtrl+E"),
+                     utf8("Изменить название, версию и описание выбранной программы."))->Enable(false);
+        Bind(wxEVT_MENU, [this](wxCommandEvent&) { edit_program(); }, id_edit_program);
         file->Append(id_save_catalog, utf8("Сохранить каталог…\tCtrl+S"),
                      utf8("Сохранить список программ в выбранный JSON-файл."));
         Bind(wxEVT_MENU, [this](wxCommandEvent&) { save_programs(); }, id_save_catalog);
@@ -294,6 +366,8 @@ private:
                 "и при необходимости категорию. Копия появится в software; исходник сохранится.\n"
                 "Также можно вручную положить файлы в software рядом с программой.\n"
                 "Для ручной проверки нажмите F5.\n\n"
+                "Выберите программу и нажмите Ctrl+E или дважды щёлкните по ней,\n"
+                "чтобы изменить название, версию и описание. Сведения сохраняются после перезапуска.\n\n"
                 "«Файл → Сохранить каталог» (Ctrl+S) сохраняет список в JSON, без копирования установщиков.\n\n"
                 "Интервал можно изменить в меню «Настройки → Слежение за software/».\n"
                 "При выключенном слежении используйте F5.\n\n"
@@ -348,14 +422,53 @@ private:
             }
             scan_failed_ = false;
             return true;
-        } catch (const minstall::CatalogError&) {
+        } catch (const minstall::CatalogError& error) {
             show_catalog({});
             scan_failed_ = true;
-            details_->ChangeValue(utf8("Не удалось прочитать папку software.\n"
-                "Проверьте доступ к папке и количество файлов (не более 10 000).\n"
-                "Нажмите F5 для повторной проверки."));
-            SetStatusText(utf8("Ошибка чтения папки software"));
+            details_->ChangeValue(utf8(std::string("Не удалось обновить список.\n\n") + error.what() +
+                "\n\nИсправьте указанную ошибку и нажмите F5 для повторной проверки."));
+            SetStatusText(utf8("Ошибка чтения списка программ"));
             return false;
+        }
+    }
+
+    void update_edit_menu() {
+        const auto selected = tree_->GetSelection();
+        GetMenuBar()->Enable(id_edit_program, !options_.explicit_catalog && selected.IsOk() &&
+                            dynamic_cast<ProgramData*>(tree_->GetItemData(selected)) != nullptr);
+    }
+
+    void edit_program() {
+        if (options_.explicit_catalog || !refresh_catalog()) {
+            return;
+        }
+        const auto selected = tree_->GetSelection();
+        const auto* data = selected.IsOk() ? dynamic_cast<ProgramData*>(tree_->GetItemData(selected)) : nullptr;
+        if (!data) {
+            return;
+        }
+        PauseWatcher pause(refresh_timer_);
+        const auto program = data->program;
+        try {
+            const auto snapshot = minstall::load_metadata(options_.software);
+            minstall::Catalog editor_catalog;
+            editor_catalog.categories.push_back({"", {program}});
+            minstall::apply_metadata(editor_catalog, snapshot);
+            EditProgramDialog dialog(this, editor_catalog.categories.front().programs.front());
+            while (dialog.ShowModal() == wxID_OK) {
+                try {
+                    minstall::save_program_details(options_.software, program.text("source_path"),
+                                                  dialog.details(), snapshot);
+                    if (refresh_catalog()) {
+                        SetStatusText(utf8("Сведения сохранены."));
+                    }
+                    return;
+                } catch (const minstall::CatalogError& error) {
+                    wxMessageBox(utf8(error.what()), utf8("Не удалось сохранить сведения"), wxOK | wxICON_ERROR, this);
+                }
+            }
+        } catch (const minstall::CatalogError& error) {
+            wxMessageBox(utf8(error.what()), utf8("Не удалось открыть редактор"), wxOK | wxICON_ERROR, this);
         }
     }
 
@@ -423,6 +536,12 @@ private:
                 return;
             }
             const auto path = file_path(dialog.GetPath());
+            const auto metadata = minstall::metadata_path(options_.software);
+            if (std::filesystem::absolute(path).lexically_normal() == std::filesystem::absolute(metadata).lexically_normal() ||
+                (std::filesystem::exists(path) && std::filesystem::exists(metadata) &&
+                 std::filesystem::equivalent(path, metadata))) {
+                throw minstall::CatalogError("Этот файл хранит сведения о программах. Выберите другое имя для экспорта.");
+            }
             const bool replace = std::filesystem::exists(std::filesystem::symlink_status(path));
             if (replace && wxMessageBox(utf8("Заменить существующий файл?\n\n" +
                     minstall::display_text(path.u8string())), utf8("Сохранение каталога"),
@@ -485,6 +604,7 @@ private:
         if (restore_selection.IsOk()) {
             tree_->SelectItem(restore_selection);
         }
+        update_edit_menu();
         SetStatusText(utf8("Категорий: " + std::to_string(catalog_.categories.size()) +
                           " · Программ: " + std::to_string(catalog_.program_count())));
     }
@@ -504,7 +624,7 @@ class CatalogApp final : public wxApp {
 public:
     bool OnInit() override {
         try {
-            auto* frame = new CatalogFrame(minstall::load_programs(gui_options), gui_options);
+            auto* frame = new CatalogFrame(gui_options);
             SetTopWindow(frame);
             frame->Show();
             if (gui_options.gui_smoke) {

@@ -5,6 +5,7 @@
 #include <sstream>
 
 int storage_tests();
+int metadata_tests();
 
 namespace {
 int checks = 0;
@@ -282,6 +283,7 @@ int main() {
         file_and_cli_tests();
         discovery_tests();
         checks += storage_tests();
+        checks += metadata_tests();
         std::cout << checks << " checks passed\n";
         return 0;
     } catch (const std::exception& error) {

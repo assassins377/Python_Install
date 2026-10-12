@@ -1,4 +1,5 @@
 #include "minstall/app.hpp"
+#include "minstall/metadata.hpp"
 
 #include <ostream>
 
@@ -46,7 +47,12 @@ Options parse_options(const std::vector<std::string>& args, const std::filesyste
 }
 
 Catalog load_programs(const Options& options) {
-    return options.explicit_catalog ? load_catalog(options.catalog) : scan_software(options.software);
+    if (options.explicit_catalog) {
+        return load_catalog(options.catalog);
+    }
+    auto catalog = scan_software(options.software);
+    apply_metadata(catalog, load_metadata(options.software));
+    return catalog;
 }
 
 int run_cli(const Options& options, std::ostream& output, std::ostream& errors) {
@@ -59,6 +65,7 @@ int run_cli(const Options& options, std::ostream& output, std::ostream& errors) 
                << "No mode: open the wxWidgets catalog browser with installer import and JSON export.\n"
                << "Default: discover installer files in software/ beside the executable.\n"
                << "Missing/empty software/: an empty list (success). No example programs.\n"
+               << "Saved names, versions and descriptions apply only to discovered files.\n"
                << "--catalog FILE: explicitly read a JSON catalog instead of scanning software/.\n"
                << "--list: list discovered files or explicit catalog entries; installed status is not checked.\n"
                << "No installation or downloads.\n"
