@@ -137,6 +137,11 @@ Catalog parse_catalog(std::string_view bytes) {
         }
         catalog.categories.push_back(std::move(category));
     }
+    for (auto it = root.begin(); it != root.end(); ++it) {
+        if (it.key() != "_version" && it.key() != "categories") {
+            catalog.extra_fields[it.key()] = std::move(it.value());
+        }
+    }
     return catalog;
 }
 

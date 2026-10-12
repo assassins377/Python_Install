@@ -33,6 +33,7 @@ struct Category {
 
 struct Catalog {
     std::vector<Category> categories;
+    Json extra_fields = Json::object();
     std::size_t program_count() const;
 };
 
@@ -42,6 +43,7 @@ inline constexpr std::size_t max_scan_entries = 10000;
 inline constexpr int max_scan_depth = 8;
 // Read file names only. Missing/empty software directories are normal.
 Catalog scan_software(const std::filesystem::path& root);
+bool is_supported_installer(const std::filesystem::path& path);
 // Escape terminal controls, including newlines, without changing stored data.
 std::string display_text(std::string_view text);
 }  // namespace minstall

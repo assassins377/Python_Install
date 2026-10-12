@@ -47,7 +47,7 @@ if(MINSTALL_SANITIZERS)
     target_link_options(minstall_options INTERFACE -fsanitize=address,undefined)
 endif()
 
-add_library(minstall_core src/catalog.cpp src/discovery.cpp src/app.cpp src/platform.cpp)
+add_library(minstall_core src/catalog.cpp src/discovery.cpp src/storage.cpp src/app.cpp src/platform.cpp)
 target_include_directories(minstall_core PUBLIC include)
 target_link_libraries(minstall_core PUBLIC nlohmann_json::nlohmann_json minstall_options)
 # Console subsystem deliberately preserves stdout, redirection and exit codes.
@@ -102,7 +102,7 @@ Client Windows compatibility=UNTESTED
 ")
 include(CTest)
 if(BUILD_TESTING)
-    add_executable(native-tests tests/catalog_tests.cpp)
+    add_executable(native-tests tests/catalog_tests.cpp tests/storage_tests.cpp)
     target_link_libraries(native-tests PRIVATE minstall_core)
     target_compile_definitions(native-tests PRIVATE MINSTALL_SOURCE_CATALOG="${catalog_source}")
     add_test(NAME catalog-and-cli COMMAND native-tests)

@@ -4,6 +4,8 @@
 #include <iostream>
 #include <sstream>
 
+int storage_tests();
+
 namespace {
 int checks = 0;
 void check(bool condition, const char* message) {
@@ -279,6 +281,7 @@ int main() {
         parser_tests();
         file_and_cli_tests();
         discovery_tests();
+        checks += storage_tests();
         std::cout << checks << " checks passed\n";
         return 0;
     } catch (const std::exception& error) {

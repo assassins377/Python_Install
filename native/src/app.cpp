@@ -56,7 +56,7 @@ int run_cli(const Options& options, std::ostream& output, std::ostream& errors) 
     }
     if (options.mode == Options::Mode::help) {
         output << prototype_version << "\nUsage: minstall-native [--list | --version | --help] [--catalog FILE]\n"
-               << "No mode: open the read-only wxWidgets catalog browser.\n"
+               << "No mode: open the wxWidgets catalog browser with installer import and JSON export.\n"
                << "Default: discover installer files in software/ beside the executable.\n"
                << "Missing/empty software/: an empty list (success). No example programs.\n"
                << "--catalog FILE: explicitly read a JSON catalog instead of scanning software/.\n"

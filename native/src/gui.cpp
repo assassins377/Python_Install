@@ -1,11 +1,15 @@
 #include "minstall/app.hpp"
+#include "minstall/storage.hpp"
 
+#include <algorithm>
 #include <array>
 #include <iostream>
 #include <utility>
 #include <wx/wx.h>
 #include <wx/splitter.h>
 #include <wx/treectrl.h>
+#include <wx/filedlg.h>
+#include <wx/progdlg.h>
 
 namespace minstall_ui {
 minstall::Options gui_options;
@@ -33,6 +37,80 @@ constexpr std::array<int, 5> watcher_intervals{0, 3000, 10000, 30000, 60000};
 wxString utf8(const std::string& value) {
     return wxString::FromUTF8(value.data(), value.size());
 }
+
+std::filesystem::path file_path(const wxString& value) {
+    return std::filesystem::u8path(value.ToStdString(wxConvUTF8));
+}
+
+class PauseWatcher final {
+public:
+    explicit PauseWatcher(wxTimer& timer) : timer_(timer), interval_(timer.IsRunning() ? timer.GetInterval() : 0) {
+        timer_.Stop();
+    }
+    ~PauseWatcher() {
+        if (interval_ > 0) {
+            timer_.Start(interval_);
+        }
+    }
+private:
+    wxTimer& timer_;
+    int interval_;
+};
+
+class AddProgramDialog final : public wxDialog {
+public:
+    explicit AddProgramDialog(wxWindow* parent)
+        : wxDialog(parent, wxID_ANY, utf8("Добавить программу"), wxDefaultPosition, wxDefaultSize,
+                   wxDEFAULT_DIALOG_STYLE | wxRESIZE_BORDER) {
+        auto* layout = new wxBoxSizer(wxVERTICAL);
+        layout->Add(new wxStaticText(this, wxID_ANY, utf8("Установочный файл")), 0, wxLEFT | wxRIGHT | wxTOP, 16);
+        auto* file_row = new wxBoxSizer(wxHORIZONTAL);
+        file_ = new wxTextCtrl(this, wxID_ANY);
+        file_row->Add(file_, 1, wxRIGHT, 8);
+        auto* browse = new wxButton(this, wxID_ANY, utf8("Обзор…"));
+        file_row->Add(browse, 0);
+        layout->Add(file_row, 0, wxEXPAND | wxLEFT | wxRIGHT | wxTOP, 16);
+        browse->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) {
+            wxFileDialog picker(this, utf8("Выберите установочный файл"), {}, {},
+                utf8("Установочные файлы|*.exe;*.EXE;*.msi;*.MSI;*.bat;*.BAT;*.cmd;*.CMD;*.ps1;*.PS1;*.reg;*.REG;"
+                     "*.sh;*.SH;*.bash;*.BASH;*.deb;*.DEB;*.appimage;*.AppImage;*.APPIMAGE|Все файлы|*"),
+                wxFD_OPEN | wxFD_FILE_MUST_EXIST);
+            if (picker.ShowModal() == wxID_OK) {
+                file_->SetValue(picker.GetPath());
+            }
+        });
+        layout->Add(new wxStaticText(this, wxID_ANY, utf8("Категория — имя подпапки (необязательно)")),
+                    0, wxLEFT | wxRIGHT | wxTOP, 16);
+        category_ = new wxTextCtrl(this, wxID_ANY);
+        layout->Add(category_, 0, wxEXPAND | wxLEFT | wxRIGHT | wxTOP, 16);
+        layout->Add(new wxStaticText(this, wxID_ANY,
+            utf8("Без категории файл попадёт в раздел «ПРОЧЕЕ».\n\n"
+                 "Файл будет скопирован в software рядом с программой.\n"
+                 "Исходный файл останется на месте. Установка не запускается.")),
+            0, wxALL, 16);
+        auto* buttons = new wxStdDialogButtonSizer();
+        auto* add = new wxButton(this, wxID_OK, utf8("Добавить"));
+        add->SetDefault();
+        add->Enable(false);
+        buttons->AddButton(add);
+        buttons->AddButton(new wxButton(this, wxID_CANCEL, utf8("Отмена")));
+        buttons->Realize();
+        layout->Add(buttons, 0, wxEXPAND | wxLEFT | wxRIGHT | wxBOTTOM, 16);
+        file_->Bind(wxEVT_TEXT, [this, add](wxCommandEvent&) { add->Enable(!file_->GetValue().IsEmpty()); });
+        SetSizerAndFit(layout);
+        SetMinSize(wxSize(660, GetSize().y));
+        SetSize(GetMinSize());
+        CentreOnParent();
+        file_->SetFocus();
+    }
+    std::filesystem::path source() const { return file_path(file_->GetValue()); }
+    std::string category() const {
+        return category_->GetValue().Trim(true).Trim(false).ToStdString(wxConvUTF8);
+    }
+private:
+    wxTextCtrl* file_ = nullptr;
+    wxTextCtrl* category_ = nullptr;
+};
 
 std::string program_details(const minstall::Program& program) {
     const auto version = program.text("version");
@@ -115,7 +193,7 @@ public:
             menus->GetMenuLabelText(1) != utf8("Настройки") ||
             menus->GetMenuLabelText(2) != utf8("Профили") ||
             menus->GetMenuLabelText(3) != utf8("Справка") ||
-            menus->IsEnabled(id_add_program) || menus->IsEnabled(id_save_catalog) ||
+            menus->IsEnabled(id_add_program) != scanning || !menus->IsEnabled(id_save_catalog) ||
             menus->IsEnabled(id_rescan) != scanning || refresh_timer_.IsRunning() != scanning) {
             return false;
         }
@@ -160,8 +238,13 @@ private:
             item->Enable(false);
         };
         auto* file = new wxMenu();
-        unavailable(file, id_add_program, "Добавить программу…");
-        unavailable(file, id_save_catalog, "Сохранить каталог…");
+        file->Append(id_add_program, utf8("Добавить программу…\tCtrl+N"),
+                     utf8("Скопировать установочный файл в software; исходник останется на месте."))
+            ->Enable(!options_.explicit_catalog);
+        Bind(wxEVT_MENU, [this](wxCommandEvent&) { add_program(); }, id_add_program);
+        file->Append(id_save_catalog, utf8("Сохранить каталог…\tCtrl+S"),
+                     utf8("Сохранить список программ в выбранный JSON-файл."));
+        Bind(wxEVT_MENU, [this](wxCommandEvent&) { save_programs(); }, id_save_catalog);
         file->AppendSeparator();
         file->Append(wxID_EXIT, utf8("Выход\tCtrl+Q"));
         Bind(wxEVT_MENU, [this](wxCommandEvent&) { Close(); }, wxID_EXIT);
@@ -207,9 +290,11 @@ private:
         fixed_option(help, id_show_log, "Показать лог", false, "Просмотр лога пока недоступен.");
         help->Append(id_add_guide, utf8("Инструкция: добавление программ"));
         Bind(wxEVT_MENU, [this](wxCommandEvent&) {
-            wxMessageBox(utf8("1. Создайте папку software рядом с программой.\n"
-                "2. Добавьте в неё установочные файлы. Подпапки станут категориями.\n"
-                "3. Список обновится автоматически. Для ручной проверки нажмите F5.\n\n"
+            wxMessageBox(utf8("Выберите «Файл → Добавить программу» (Ctrl+N), укажите установочный файл\n"
+                "и при необходимости категорию. Копия появится в software; исходник сохранится.\n"
+                "Также можно вручную положить файлы в software рядом с программой.\n"
+                "Для ручной проверки нажмите F5.\n\n"
+                "«Файл → Сохранить каталог» (Ctrl+S) сохраняет список в JSON, без копирования установщиков.\n\n"
                 "Интервал можно изменить в меню «Настройки → Слежение за software/».\n"
                 "При выключенном слежении используйте F5.\n\n"
                 "При запуске с --catalog показан выбранный JSON: сканирование отключено.\n"
@@ -252,9 +337,9 @@ private:
         }
     }
 
-    void refresh_catalog() {
+    bool refresh_catalog() {
         if (options_.explicit_catalog) {
-            return;
+            return true;
         }
         try {
             auto refreshed = minstall::load_programs(options_);
@@ -262,6 +347,7 @@ private:
                 show_catalog(std::move(refreshed));
             }
             scan_failed_ = false;
+            return true;
         } catch (const minstall::CatalogError&) {
             show_catalog({});
             scan_failed_ = true;
@@ -269,6 +355,87 @@ private:
                 "Проверьте доступ к папке и количество файлов (не более 10 000).\n"
                 "Нажмите F5 для повторной проверки."));
             SetStatusText(utf8("Ошибка чтения папки software"));
+            return false;
+        }
+    }
+
+    void add_program() {
+        if (options_.explicit_catalog) {
+            return;
+        }
+        PauseWatcher pause(refresh_timer_);
+        AddProgramDialog dialog(this);
+        while (dialog.ShowModal() == wxID_OK) {
+            try {
+                minstall::ImportResult result;
+                {
+                    wxProgressDialog progress(utf8("Добавление программы"), utf8("Копирование установочного файла…"),
+                        100, this, wxPD_CAN_ABORT | wxPD_APP_MODAL | wxPD_AUTO_HIDE | wxPD_ELAPSED_TIME);
+                    result = minstall::import_installer(dialog.source(), options_.software, dialog.category(),
+                        [&progress](std::uintmax_t copied, std::uintmax_t total) {
+                            const auto fraction = total == 0 ? 0.0L :
+                                100.0L * static_cast<long double>(copied) / static_cast<long double>(total);
+                            return progress.Update(static_cast<int>(std::min(99.0L, fraction)));
+                        });
+                    progress.Update(100);
+                }
+                if (refresh_catalog()) {
+                    const auto relative = result.path.lexically_relative(options_.software).generic_u8string();
+                    wxTreeItemIdValue category_cookie;
+                    for (auto category = tree_->GetFirstChild(tree_->GetRootItem(), category_cookie); category.IsOk();
+                         category = tree_->GetNextChild(tree_->GetRootItem(), category_cookie)) {
+                        wxTreeItemIdValue program_cookie;
+                        for (auto item = tree_->GetFirstChild(category, program_cookie); item.IsOk();
+                             item = tree_->GetNextChild(category, program_cookie)) {
+                            const auto* data = static_cast<ProgramData*>(tree_->GetItemData(item));
+                            if (data->program.text("source_path") == relative) {
+                                tree_->SelectItem(item);
+                                tree_->EnsureVisible(item);
+                            }
+                        }
+                    }
+                    SetStatusText(utf8(result.copied ? "Программа добавлена в список." : "Этот файл уже есть в списке."));
+                } else {
+                    wxMessageBox(utf8("Файл добавлен, но список не удалось обновить. Проверьте папку software и нажмите F5."),
+                                 utf8("Добавление программы"), wxOK | wxICON_WARNING, this);
+                }
+                return;
+            } catch (const minstall::ImportCancelled&) {
+                SetStatusText(utf8("Добавление отменено. Исходный файл сохранён."));
+                return;
+            } catch (const minstall::CatalogError& error) {
+                wxMessageBox(utf8(error.what()), utf8("Не удалось добавить программу"), wxOK | wxICON_ERROR, this);
+            }
+        }
+    }
+
+    void save_programs() {
+        PauseWatcher pause(refresh_timer_);
+        wxFileDialog dialog(this, utf8("Сохранить каталог"), utf8(options_.catalog.parent_path().u8string()),
+                            "programs-export.json", "JSON (*.json)|*.json", wxFD_SAVE);
+        if (dialog.ShowModal() != wxID_OK) {
+            return;
+        }
+        try {
+            // Refresh after choosing the path: never export a stale default list.
+            // An explicit catalog remains a snapshot of the selected document.
+            if (!options_.explicit_catalog && !refresh_catalog()) {
+                return;
+            }
+            const auto path = file_path(dialog.GetPath());
+            const bool replace = std::filesystem::exists(std::filesystem::symlink_status(path));
+            if (replace && wxMessageBox(utf8("Заменить существующий файл?\n\n" +
+                    minstall::display_text(path.u8string())), utf8("Сохранение каталога"),
+                    wxYES_NO | wxNO_DEFAULT | wxICON_QUESTION, this) != wxYES) {
+                return;
+            }
+            minstall::save_catalog(catalog_, path, replace);
+            SetStatusText(utf8("Каталог сохранён: " + minstall::display_text(path.u8string())));
+        } catch (const minstall::CatalogError& error) {
+            wxMessageBox(utf8(error.what()), utf8("Не удалось сохранить каталог"), wxOK | wxICON_ERROR, this);
+        } catch (const std::filesystem::filesystem_error&) {
+            wxMessageBox(utf8("Не удалось проверить выбранный путь. Проверьте доступ к папке."),
+                         utf8("Не удалось сохранить каталог"), wxOK | wxICON_ERROR, this);
         }
     }
 

@@ -28,7 +28,9 @@ bool is_link(const fs::directory_entry& entry, const fs::file_status& status) {
 #endif
 }
 
-bool supported(const fs::path& path) {
+}  // namespace
+
+bool is_supported_installer(const fs::path& path) {
     auto extension = path.extension().u8string();
     for (auto& c : extension) {
         if (c >= 'A' && c <= 'Z') {
@@ -40,6 +42,7 @@ bool supported(const fs::path& path) {
     return std::find(extensions.begin(), extensions.end(), extension) != extensions.end();
 }
 
+namespace {
 void scan(const fs::path& directory, const fs::path& relative, int depth,
           std::size_t& visited, std::map<std::string, std::vector<Program>>& categories) {
     std::vector<fs::directory_entry> entries;
@@ -69,7 +72,7 @@ void scan(const fs::path& directory, const fs::path& relative, int depth,
             if (depth < max_scan_depth) {
                 scan(entry.path(), child, depth + 1, visited, categories);
             }
-        } else if (fs::is_regular_file(status) && supported(entry.path())) {
+        } else if (fs::is_regular_file(status) && is_supported_installer(entry.path())) {
             std::string category;
             for (const auto& component : relative) {
                 if (!category.empty()) {
