@@ -14,6 +14,14 @@ wxString utf8(const std::string& value) {
     return wxString::FromUTF8(value.data(), value.size());
 }
 
+std::string program_details(const minstall::Program& program) {
+    const auto version = program.text("version");
+    const auto description = program.text("desc");
+    return minstall::display_text(program.name()) + "\n" +
+           "Версия: " + (version.empty() ? "Не указана" : minstall::display_text(version)) +
+           "\n\nОписание\n" + (description.empty() ? "Описание пока не добавлено." : description);
+}
+
 class ProgramData final : public wxTreeItemData {
 public:
     explicit ProgramData(const minstall::Program* value) : program(value) {}
@@ -54,8 +62,9 @@ public:
         tree_->Bind(wxEVT_TREE_SEL_CHANGED, [this](wxTreeEvent& event) {
             const auto* data = dynamic_cast<ProgramData*>(tree_->GetItemData(event.GetItem()));
             if (data) {
-                // Plain text only. Never load icon paths, follow URLs or execute commands.
-                details_->ChangeValue(utf8(data->program->fields.dump(2, ' ', false)));
+                // Show readable catalog text, without internal commands or JSON.
+                // Never load icon paths, follow URLs or execute commands.
+                details_->ChangeValue(utf8(program_details(*data->program)));
             } else {
                 details_->ChangeValue(utf8("Выберите программу в категории."));
             }
@@ -76,7 +85,7 @@ public:
         if (first_program_.IsOk()) {
             tree_->SelectItem(first_program_);
             const auto* data = static_cast<ProgramData*>(tree_->GetItemData(first_program_));
-            return details_->GetValue() == utf8(data->program->fields.dump(2, ' ', false));
+            return details_->GetValue() == utf8(program_details(*data->program));
         }
         return true;
     }
