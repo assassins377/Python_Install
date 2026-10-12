@@ -38,6 +38,10 @@ struct Catalog {
 
 Catalog parse_catalog(std::string_view bytes);
 Catalog load_catalog(const std::filesystem::path& path);
+inline constexpr std::size_t max_scan_entries = 10000;
+inline constexpr int max_scan_depth = 8;
+// Read file names only. Missing/empty software directories are normal.
+Catalog scan_software(const std::filesystem::path& root);
 // Escape terminal controls, including newlines, without changing stored data.
 std::string display_text(std::string_view text);
 }  // namespace minstall

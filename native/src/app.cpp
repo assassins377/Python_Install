@@ -6,6 +6,7 @@ namespace minstall {
 Options parse_options(const std::vector<std::string>& args, const std::filesystem::path& default_catalog) {
     Options options;
     options.catalog = default_catalog;
+    options.software = default_catalog.parent_path() / "software";
     bool mode_seen = false;
     bool catalog_seen = false;
     for (std::size_t i = 0; i < args.size(); ++i) {
@@ -15,6 +16,7 @@ Options parse_options(const std::vector<std::string>& args, const std::filesyste
                 throw CatalogError("--catalog requires one file path and may only appear once");
             }
             options.catalog = std::filesystem::u8path(args[i]);
+            options.explicit_catalog = true;
             catalog_seen = true;
         } else if (arg == "--gui-smoke") {
             if (options.gui_smoke) {
@@ -43,6 +45,10 @@ Options parse_options(const std::vector<std::string>& args, const std::filesyste
     return options;
 }
 
+Catalog load_programs(const Options& options) {
+    return options.explicit_catalog ? load_catalog(options.catalog) : scan_software(options.software);
+}
+
 int run_cli(const Options& options, std::ostream& output, std::ostream& errors) {
     if (options.mode == Options::Mode::version) {
         output << prototype_version << '\n';
@@ -51,8 +57,11 @@ int run_cli(const Options& options, std::ostream& output, std::ostream& errors) 
     if (options.mode == Options::Mode::help) {
         output << prototype_version << "\nUsage: minstall-native [--list | --version | --help] [--catalog FILE]\n"
                << "No mode: open the read-only wxWidgets catalog browser.\n"
-               << "--list: list every catalog entry in source order; installed status is not checked.\n"
-               << "Default catalog: programs.json beside the executable. No installation or downloads.\n"
+               << "Default: discover installer files in software/ beside the executable.\n"
+               << "Missing/empty software/: an empty list (success). No example programs.\n"
+               << "--catalog FILE: explicitly read a JSON catalog instead of scanning software/.\n"
+               << "--list: list discovered files or explicit catalog entries; installed status is not checked.\n"
+               << "No installation or downloads.\n"
                << "Exit codes: 0 success; 3 invalid arguments, catalog or unavailable GUI.\n";
         return 0;
     }
@@ -60,11 +69,7 @@ int run_cli(const Options& options, std::ostream& output, std::ostream& errors) 
         errors << "GUI is unavailable in this build. Use --list.\n";
         return 3;
     }
-    const auto catalog = load_catalog(options.catalog);
-    if (catalog.categories.empty()) {
-        errors << "Catalog has no categories.\n";
-        return 3;
-    }
+    const auto catalog = load_programs(options);
     for (const auto& category : catalog.categories) {
         output << "\n[" << display_text(category.name) << "]\n";
         for (const auto& program : category.programs) {

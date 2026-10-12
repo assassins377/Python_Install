@@ -189,12 +189,96 @@ void file_and_cli_tests() {
     rejects([&] { minstall::run_cli(options, nul_output, nul_errors); });
     check(nul_output.str().empty() && nul_errors.str().empty(), "NUL catalog produces no partial list");
 }
+
+void discovery_tests() {
+    namespace fs = std::filesystem;
+    const auto base = minstall::default_catalog_path().parent_path() / "discovery-test-fixture";
+    check(fs::create_directory(base), "Exclusive test fixture directory");
+    struct RemoveDirectory {
+        fs::path path;
+        ~RemoveDirectory() {
+            std::error_code error;
+            fs::remove_all(path, error);
+        }
+    } cleanup{base};
+    const auto root = base / "software";
+    const auto write = [](const fs::path& path) {
+        std::ofstream file(path, std::ios::binary);
+        file << "inert test fixture; never execute";
+        check(static_cast<bool>(file), "Discovery fixture written");
+    };
+    auto options = minstall::parse_options({"--list"}, base / "programs.json");
+    check(!options.explicit_catalog && options.software == root, "Discovery is the default source");
+    check(minstall::load_programs(options).categories.empty(), "Missing software gives empty catalog");
+    check(!fs::exists(root), "Discovery does not create directories");
+    write(base / "programs.json");
+    check(minstall::load_programs(options).categories.empty(), "Implicit sample JSON is never read");
+    fs::create_directory(root);
+    write(root / "notes.txt");
+    fs::create_directory(root / "directory.exe");
+    check(minstall::load_programs(options).categories.empty(), "Unsupported files and empty directories give no categories");
+    std::ostringstream output;
+    std::ostringstream errors;
+    check(minstall::run_cli(options, output, errors) == 0 && output.str().empty(), "Empty list succeeds without sample output");
+
+    for (const auto* extension : {".EXE", ".msi", ".bat", ".cmd", ".ps1", ".reg", ".sh", ".bash", ".deb", ".AppImage"}) {
+        write(root / (std::string("Program") + extension));
+    }
+    const auto nested = root / fs::u8path("Утилиты с пробелами") / fs::u8path("中文");
+    fs::create_directories(nested);
+    const auto unicode_file = nested / fs::u8path("Программа 1.2.msi");
+    write(unicode_file);
+    auto found = minstall::load_programs(options);
+    check(found.program_count() == 11 && found.categories.size() == 2, "All supported extensions and nested files found");
+    check(found.categories[0].name == "ПРОЧЕЕ", "Root files have a category");
+    check(found.categories[1].name == "Утилиты с пробелами / 中文", "Folder hierarchy preserves Unicode");
+    const auto& program = found.categories[1].programs[0];
+    check(program.name() == "Программа 1.2", "File stem used without guessing a product name");
+    check(program.text("source_path") == "Утилиты с пробелами/中文/Программа 1.2.msi", "Relative file identity");
+    check(program.text("cmd").empty() && program.text("version").empty(), "No guessed commands or versions");
+    fs::remove(unicode_file);
+    found = minstall::load_programs(options);
+    check(found.program_count() == 10 && found.categories.size() == 1, "Removed files and empty categories disappear on rescan");
+
+    const auto outside = base / "outside";
+    fs::create_directory(outside);
+    write(outside / "hidden.exe");
+    std::error_code link_error;
+    fs::create_directory_symlink(outside, root / "linked-directory", link_error);
+    if (!link_error) {
+        check(minstall::load_programs(options).program_count() == 10, "Directory links not followed");
+        rejects([&] { minstall::scan_software(root / "linked-directory"); });
+    }
+    fs::create_symlink(outside / "hidden.exe", root / "linked.exe", link_error);
+    if (!link_error) {
+        check(minstall::load_programs(options).program_count() == 10, "File links excluded");
+    }
+    auto deep = root;
+    for (int i = 0; i < minstall::max_scan_depth; ++i) {
+        deep /= "deep";
+    }
+    fs::create_directories(deep);
+    write(deep / "at-limit.exe");
+    fs::create_directory(deep / "beyond");
+    write(deep / "beyond" / "too-deep.exe");
+    check(minstall::load_programs(options).program_count() == 11, "Depth eight included, deeper files excluded");
+    rejects([&] { minstall::scan_software(root / "Program.EXE"); });
+
+    fs::remove_all(root);
+    check(minstall::load_programs(options).categories.empty(), "Deleting software clears the catalog");
+    fs::create_directory(root);
+    for (std::size_t i = 0; i <= minstall::max_scan_entries; ++i) {
+        std::ofstream file(root / (std::to_string(i) + ".txt"));
+    }
+    rejects([&] { minstall::load_programs(options); });
+}
 }  // namespace
 
 int main() {
     try {
         parser_tests();
         file_and_cli_tests();
+        discovery_tests();
         std::cout << checks << " checks passed\n";
         return 0;
     } catch (const std::exception& error) {

@@ -47,7 +47,7 @@ if(MINSTALL_SANITIZERS)
     target_link_options(minstall_options INTERFACE -fsanitize=address,undefined)
 endif()
 
-add_library(minstall_core src/catalog.cpp src/app.cpp src/platform.cpp)
+add_library(minstall_core src/catalog.cpp src/discovery.cpp src/app.cpp src/platform.cpp)
 target_include_directories(minstall_core PUBLIC include)
 target_link_libraries(minstall_core PUBLIC nlohmann_json::nlohmann_json minstall_options)
 # Console subsystem deliberately preserves stdout, redirection and exit codes.
@@ -100,10 +100,6 @@ wxWidgets=3.2.11
 JSON=3.12.0
 Client Windows compatibility=UNTESTED
 ")
-add_custom_command(TARGET minstall-native POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different "${catalog_source}" "$<TARGET_FILE_DIR:minstall-native>/programs.json"
-    VERBATIM)
-
 include(CTest)
 if(BUILD_TESTING)
     add_executable(native-tests tests/catalog_tests.cpp)
@@ -116,21 +112,24 @@ if(BUILD_TESTING)
     if(MINSTALL_BUILD_GUI)
         if(WIN32)
             add_test(NAME gui-smoke COMMAND minstall-native --gui-smoke)
+            add_test(NAME gui-explicit-catalog COMMAND minstall-native --gui-smoke --catalog "${catalog_source}")
         elseif(UNIX)
             find_program(XVFB_RUN xvfb-run)
             if(XVFB_RUN)
                 add_test(NAME gui-smoke COMMAND "${XVFB_RUN}" -a $<TARGET_FILE:minstall-native> --gui-smoke)
+                add_test(NAME gui-explicit-catalog COMMAND "${XVFB_RUN}" -a $<TARGET_FILE:minstall-native>
+                    --gui-smoke --catalog "${catalog_source}")
             endif()
         endif()
     endif()
     set_tests_properties(catalog-and-cli cli-process PROPERTIES TIMEOUT 30)
     if(TEST gui-smoke)
-        set_tests_properties(gui-smoke PROPERTIES TIMEOUT 30)
+        set_tests_properties(gui-smoke gui-explicit-catalog PROPERTIES TIMEOUT 30)
     endif()
 endif()
 
 install(TARGETS minstall-native RUNTIME DESTINATION .)
-install(FILES "${catalog_source}" "${CMAKE_CURRENT_SOURCE_DIR}/../programs.schema.json"
+install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/../programs.schema.json"
               README.md WINDOWS_COMPATIBILITY.md DESTINATION .)
 install(FILES "${CMAKE_CURRENT_BINARY_DIR}/native-toolchain-$<CONFIG>.txt" DESTINATION .)
 install(FILES "${nlohmann_json_SOURCE_DIR}/LICENSE.MIT" DESTINATION licenses RENAME nlohmann-json.txt)
