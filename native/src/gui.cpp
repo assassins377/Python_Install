@@ -1,5 +1,6 @@
 #include "minstall/app.hpp"
 
+#include <array>
 #include <iostream>
 #include <utility>
 #include <wx/wx.h>
@@ -9,6 +10,25 @@
 namespace minstall_ui {
 minstall::Options gui_options;
 int gui_result = 0;
+
+enum MenuId {
+    id_add_program = wxID_HIGHEST + 1,
+    id_save_catalog,
+    id_parallel,
+    id_autoscan,
+    id_generate_catalog,
+    id_hide_missing,
+    id_installed_cache,
+    id_language,
+    id_profiles,
+    id_check_updates,
+    id_show_log,
+    id_program_updates,
+    id_rescan,
+    id_add_guide,
+    id_watcher_first
+};
+constexpr std::array<int, 5> watcher_intervals{0, 3000, 10000, 30000, 60000};
 
 wxString utf8(const std::string& value) {
     return wxString::FromUTF8(value.data(), value.size());
@@ -79,31 +99,42 @@ public:
             }
         });
         CreateStatusBar();
+        create_menu();
         show_catalog(std::move(catalog));
-        if (!options_.explicit_catalog) {
-            Bind(wxEVT_TIMER, [this](wxTimerEvent&) {
-                try {
-                    auto refreshed = minstall::load_programs(options_);
-                    if (scan_failed_ || !same_catalog(catalog_, refreshed)) {
-                        show_catalog(std::move(refreshed));
-                    }
-                    scan_failed_ = false;
-                } catch (const minstall::CatalogError&) {
-                    show_catalog({});
-                    scan_failed_ = true;
-                    details_->ChangeValue(utf8("Не удалось прочитать папку software.\n"
-                        "Проверьте доступ к папке и количество файлов (не более 10 000).\n"
-                        "Повторная проверка выполняется автоматически."));
-                    SetStatusText(utf8("Ошибка чтения папки software"));
-                }
-            }, refresh_timer_.GetId());
-            refresh_timer_.Start(3000);
-        }
+        Bind(wxEVT_TIMER, [this](wxTimerEvent&) { refresh_catalog(); }, refresh_timer_.GetId());
+        set_watcher_interval(3000);
         SetMinSize(wxSize(640, 400));
         Centre();
     }
 
     bool smoke_check() {
+        const auto* menus = GetMenuBar();
+        const bool scanning = !options_.explicit_catalog;
+        if (!menus || menus->GetMenuCount() != 4 ||
+            menus->GetMenuLabelText(0) != utf8("Файл") ||
+            menus->GetMenuLabelText(1) != utf8("Настройки") ||
+            menus->GetMenuLabelText(2) != utf8("Профили") ||
+            menus->GetMenuLabelText(3) != utf8("Справка") ||
+            menus->IsEnabled(id_add_program) || menus->IsEnabled(id_save_catalog) ||
+            menus->IsEnabled(id_rescan) != scanning || refresh_timer_.IsRunning() != scanning) {
+            return false;
+        }
+        if (scanning) {
+            // Exercise the same event bindings used by the menu, not just setters.
+            wxCommandEvent off(wxEVT_MENU, id_watcher_first);
+            GetEventHandler()->ProcessEvent(off);
+            if (refresh_timer_.IsRunning() || !menus->IsChecked(id_watcher_first)) {
+                return false;
+            }
+            wxCommandEvent rescan(wxEVT_MENU, id_rescan);
+            GetEventHandler()->ProcessEvent(rescan);
+            wxCommandEvent resume(wxEVT_MENU, id_watcher_first + 1);
+            GetEventHandler()->ProcessEvent(resume);
+            if (!refresh_timer_.IsRunning() || refresh_timer_.GetInterval() != 3000 ||
+                !menus->IsChecked(id_watcher_first + 1)) {
+                return false;
+            }
+        }
         const auto expected = catalog_.categories.size() + catalog_.program_count();
         // wxMSW's hidden root is virtual; count descendants on every port.
         if (tree_->GetChildrenCount(tree_->GetRootItem(), true) != expected) {
@@ -118,11 +149,137 @@ public:
     }
 
 private:
+    void create_menu() {
+        auto* menus = new wxMenuBar();
+        const auto unavailable = [](wxMenu* menu, int id, const char* label) {
+            menu->Append(id, utf8(label), utf8("Эта функция пока недоступна в прототипе."))->Enable(false);
+        };
+        const auto fixed_option = [](wxMenu* menu, int id, const char* label, bool checked, const char* help) {
+            auto* item = menu->AppendCheckItem(id, utf8(label), utf8(help));
+            item->Check(checked);
+            item->Enable(false);
+        };
+        auto* file = new wxMenu();
+        unavailable(file, id_add_program, "Добавить программу…");
+        unavailable(file, id_save_catalog, "Сохранить каталог…");
+        file->AppendSeparator();
+        file->Append(wxID_EXIT, utf8("Выход\tCtrl+Q"));
+        Bind(wxEVT_MENU, [this](wxCommandEvent&) { Close(); }, wxID_EXIT);
+        menus->Append(file, utf8("&Файл"));
+
+        auto* settings = new wxMenu();
+        fixed_option(settings, id_parallel, "Параллельная установка", false, "Установка пока недоступна.");
+        settings->AppendSeparator();
+        const bool scanning = !options_.explicit_catalog;
+        fixed_option(settings, id_autoscan, "Автосканирование software/", scanning,
+                     "В обычном режиме папка проверяется при запуске.");
+        fixed_option(settings, id_generate_catalog, "Генерировать каталог из software/", scanning,
+                     "В обычном режиме список всегда формируется из доступных файлов.");
+        fixed_option(settings, id_hide_missing, "Скрывать недоступные программы", scanning,
+                     "В обычном режиме отсутствующие файлы не включаются в список.");
+        auto* watcher = new wxMenu();
+        for (std::size_t i = 0; i < watcher_intervals.size(); ++i) {
+            const int interval = watcher_intervals[i];
+            const int id = id_watcher_first + static_cast<int>(i);
+            const auto label = interval == 0 ? std::string("Выключено") :
+                "Каждые " + std::to_string(interval / 1000) + " сек";
+            watcher->AppendRadioItem(id, utf8(label));
+            Bind(wxEVT_MENU, [this, interval](wxCommandEvent&) { set_watcher_interval(interval); }, id);
+        }
+        watcher->Check(id_watcher_first + (scanning ? 1 : 0), true);
+        settings->AppendSubMenu(watcher, utf8("Слежение за software/"),
+            utf8("Интервал проверки папки; настройка действует до закрытия программы."))->Enable(scanning);
+        fixed_option(settings, id_installed_cache, "Кеш списка установленных программ", false,
+                     "Обнаружение установленного ПО пока недоступно.");
+        settings->AppendSeparator();
+        settings->Append(id_rescan, utf8("Пересканировать software/\tF5"),
+                         utf8("Обновить список сейчас, даже если слежение выключено."))->Enable(scanning);
+        Bind(wxEVT_MENU, [this](wxCommandEvent&) { refresh_catalog(); }, id_rescan);
+        unavailable(settings, id_language, "Язык: Русский");
+        menus->Append(settings, utf8("&Настройки"));
+
+        auto* profiles = new wxMenu();
+        unavailable(profiles, id_profiles, "Профили пока недоступны");
+        menus->Append(profiles, utf8("&Профили"));
+
+        auto* help = new wxMenu();
+        unavailable(help, id_check_updates, "Проверить обновления…");
+        fixed_option(help, id_show_log, "Показать лог", false, "Просмотр лога пока недоступен.");
+        help->Append(id_add_guide, utf8("Инструкция: добавление программ"));
+        Bind(wxEVT_MENU, [this](wxCommandEvent&) {
+            wxMessageBox(utf8("1. Создайте папку software рядом с программой.\n"
+                "2. Добавьте в неё установочные файлы. Подпапки станут категориями.\n"
+                "3. Список обновится автоматически. Для ручной проверки нажмите F5.\n\n"
+                "Интервал можно изменить в меню «Настройки → Слежение за software/».\n"
+                "При выключенном слежении используйте F5.\n\n"
+                "При запуске с --catalog показан выбранный JSON: сканирование отключено.\n"
+                "Для обычного режима запустите программу без этого параметра.\n\n"
+                "Серые пункты меню пока недоступны. Установка файлов ещё не выполняется."),
+                utf8("Добавление программ"), wxOK | wxICON_INFORMATION, this);
+        }, id_add_guide);
+        unavailable(help, id_program_updates, "Проверить обновления программ");
+        help->AppendSeparator();
+        help->Append(wxID_ABOUT, utf8("О программе…\tF1"));
+        Bind(wxEVT_MENU, [this](wxCommandEvent&) {
+            wxMessageBox(utf8("MInstAll Native 0.1.0\n\n"
+                "Просмотр доступных установочных файлов и каталога программ.\n"
+                "Прототип переноса MInstAll 2.2.2 на C++ и wxWidgets.\n\n"
+                "Установка, обновления и профили пока недоступны.\n"
+                "Настройки слежения действуют до закрытия программы."),
+                utf8("О программе"), wxOK | wxICON_INFORMATION, this);
+        }, wxID_ABOUT);
+        menus->Append(help, utf8("&Справка"));
+        SetMenuBar(menus);
+    }
+
+    void set_watcher_interval(int interval) {
+        if (options_.explicit_catalog) {
+            return;
+        }
+        refresh_timer_.Stop();
+        watcher_interval_ = interval;
+        if (interval > 0) {
+            refresh_timer_.Start(interval);
+        }
+        for (std::size_t i = 0; i < watcher_intervals.size(); ++i) {
+            if (watcher_intervals[i] == interval) {
+                GetMenuBar()->Check(id_watcher_first + static_cast<int>(i), true);
+                break;
+            }
+        }
+        if (catalog_.program_count() == 0 && !scan_failed_) {
+            details_->ChangeValue(utf8(empty_message()));
+        }
+    }
+
+    void refresh_catalog() {
+        if (options_.explicit_catalog) {
+            return;
+        }
+        try {
+            auto refreshed = minstall::load_programs(options_);
+            if (scan_failed_ || !same_catalog(catalog_, refreshed)) {
+                show_catalog(std::move(refreshed));
+            }
+            scan_failed_ = false;
+        } catch (const minstall::CatalogError&) {
+            show_catalog({});
+            scan_failed_ = true;
+            details_->ChangeValue(utf8("Не удалось прочитать папку software.\n"
+                "Проверьте доступ к папке и количество файлов (не более 10 000).\n"
+                "Нажмите F5 для повторной проверки."));
+            SetStatusText(utf8("Ошибка чтения папки software"));
+        }
+    }
+
     std::string empty_message() const {
-        return options_.explicit_catalog ? "В выбранном каталоге пока нет программ." :
-            "Программ пока нет.\n\n"
-            "Добавьте установочные файлы в папку software рядом с программой.\n"
-            "Список появится автоматически. Подпапки станут категориями.";
+        if (options_.explicit_catalog) {
+            return "В выбранном каталоге пока нет программ.";
+        }
+        return std::string("Программ пока нет.\n\n"
+            "Добавьте установочные файлы в папку software рядом с программой.\n") +
+            (watcher_interval_ == 0 ? "Для обновления списка нажмите F5. Слежение за папкой выключено." :
+                                     "Список появится автоматически. Подпапки станут категориями.");
     }
 
     void show_catalog(minstall::Catalog catalog) {
@@ -167,6 +324,7 @@ private:
 
     minstall::Options options_;
     wxTimer refresh_timer_;
+    int watcher_interval_ = 3000;
     bool rebuilding_ = false;
     bool scan_failed_ = false;
     minstall::Catalog catalog_;
