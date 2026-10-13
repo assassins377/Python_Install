@@ -218,27 +218,8 @@ public:
         splitter->SplitVertically(tree_, details_, 330);
         layout->Add(splitter, 1, wxEXPAND | wxLEFT | wxRIGHT | wxBOTTOM, 12);
         panel->SetSizer(layout);
-        tree_->Bind(wxEVT_TREE_SEL_CHANGED, [this](wxTreeEvent& event) {
-            if (rebuilding_ || !event.GetItem().IsOk()) {
-                return;
-            }
-            const auto* data = dynamic_cast<ProgramData*>(tree_->GetItemData(event.GetItem()));
-            if (data) {
-                // Never load icon paths, follow URLs or execute commands.
-                details_->ChangeValue(utf8(program_details(data->program)));
-            } else {
-                details_->ChangeValue(utf8("Выберите программу в категории."));
-            }
-            update_edit_menu();
-        });
-        tree_->Bind(wxEVT_TREE_ITEM_ACTIVATED, [this](wxTreeEvent& event) {
-            if (event.GetItem().IsOk() && dynamic_cast<ProgramData*>(tree_->GetItemData(event.GetItem()))) {
-                tree_->SelectItem(event.GetItem());
-                edit_program();
-            } else {
-                event.Skip();
-            }
-        });
+        tree_->Bind(wxEVT_TREE_SEL_CHANGED, &CatalogFrame::on_selection_changed, this);
+        tree_->Bind(wxEVT_TREE_ITEM_ACTIVATED, &CatalogFrame::on_item_activated, this);
         CreateStatusBar();
         create_menu();
         if (options_.explicit_catalog) {
@@ -251,6 +232,15 @@ public:
         set_watcher_interval(3000);
         SetMinSize(wxSize(640, 400));
         Centre();
+    }
+
+    ~CatalogFrame() override {
+        refresh_timer_.Stop();
+        // wxMSW deletes selected tree items while destroying its children. The
+        // frame's menu/status bars are already gone at that point, so detach
+        // child callbacks while this frame and its controls are still alive.
+        tree_->Unbind(wxEVT_TREE_SEL_CHANGED, &CatalogFrame::on_selection_changed, this);
+        tree_->Unbind(wxEVT_TREE_ITEM_ACTIVATED, &CatalogFrame::on_item_activated, this);
     }
 
     bool smoke_check() {
@@ -289,6 +279,18 @@ public:
         if (first_program_.IsOk()) {
             tree_->SelectItem(first_program_);
             const auto* data = static_cast<ProgramData*>(tree_->GetItemData(first_program_));
+            if (!data || details_->GetValue() != utf8(program_details(data->program)) ||
+                menus->IsEnabled(id_edit_program) != scanning) {
+                return false;
+            }
+            tree_->SelectItem(tree_->GetItemParent(first_program_));
+            if (menus->IsEnabled(id_edit_program) ||
+                details_->GetValue() != utf8("Выберите программу в категории.")) {
+                return false;
+            }
+            // Leave a populated tree selected when closing: wxMSW emits
+            // selection notifications during teardown of this exact case.
+            tree_->SelectItem(first_program_);
             return details_->GetValue() == utf8(program_details(data->program)) &&
                    menus->IsEnabled(id_edit_program) == scanning;
         }
@@ -296,6 +298,29 @@ public:
     }
 
 private:
+    void on_selection_changed(wxTreeEvent& event) {
+        if (rebuilding_ || !event.GetItem().IsOk()) {
+            return;
+        }
+        const auto* data = dynamic_cast<ProgramData*>(tree_->GetItemData(event.GetItem()));
+        if (data) {
+            // Never load icon paths, follow URLs or execute commands.
+            details_->ChangeValue(utf8(program_details(data->program)));
+        } else {
+            details_->ChangeValue(utf8("Выберите программу в категории."));
+        }
+        update_edit_menu();
+    }
+
+    void on_item_activated(wxTreeEvent& event) {
+        if (event.GetItem().IsOk() && dynamic_cast<ProgramData*>(tree_->GetItemData(event.GetItem()))) {
+            tree_->SelectItem(event.GetItem());
+            edit_program();
+        } else {
+            event.Skip();
+        }
+    }
+
     void create_menu() {
         auto* menus = new wxMenuBar();
         const auto unavailable = [](wxMenu* menu, int id, const char* label) {
@@ -433,9 +458,13 @@ private:
     }
 
     void update_edit_menu() {
+        auto* menus = GetMenuBar();
+        if (!menus) {
+            return;
+        }
         const auto selected = tree_->GetSelection();
-        GetMenuBar()->Enable(id_edit_program, !options_.explicit_catalog && selected.IsOk() &&
-                            dynamic_cast<ProgramData*>(tree_->GetItemData(selected)) != nullptr);
+        menus->Enable(id_edit_program, !options_.explicit_catalog && selected.IsOk() &&
+                      dynamic_cast<ProgramData*>(tree_->GetItemData(selected)) != nullptr);
     }
 
     void edit_program() {
