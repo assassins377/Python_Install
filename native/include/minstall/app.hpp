@@ -13,6 +13,7 @@ struct Options {
     std::filesystem::path software;
     bool explicit_catalog = false;
     bool gui_smoke = false;
+    bool check_installed = false;
 };
 
 Options parse_options(const std::vector<std::string>& args, const std::filesystem::path& default_catalog);

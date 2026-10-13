@@ -6,6 +6,7 @@
 
 int storage_tests();
 int metadata_tests();
+int detection_tests();
 
 namespace {
 int checks = 0;
@@ -163,7 +164,9 @@ void file_and_cli_tests() {
     for (const std::vector<std::string>& args : std::vector<std::vector<std::string>>{
              {"--install", "anything"}, {"--catalog"}, {"--list", "--version"}, {"--list", "--list"},
              {"--catalog", "--list"}, {"--catalog", "a", "--catalog", "b"}, {"--unknown"},
-             {"--list", "--gui-smoke"}, {"--gui-smoke", "--gui-smoke"}}) {
+             {"--list", "--gui-smoke"}, {"--gui-smoke", "--gui-smoke"},
+             {"--check-installed"}, {"--version", "--check-installed"},
+             {"--list", "--check-installed", "--check-installed"}}) {
         rejects([&] { minstall::parse_options(args, default_path); });
     }
 
@@ -284,6 +287,7 @@ int main() {
         discovery_tests();
         checks += storage_tests();
         checks += metadata_tests();
+        checks += detection_tests();
         std::cout << checks << " checks passed\n";
         return 0;
     } catch (const std::exception& error) {

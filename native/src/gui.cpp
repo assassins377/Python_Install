@@ -1,9 +1,11 @@
 #include "minstall/app.hpp"
 #include "minstall/metadata.hpp"
 #include "minstall/storage.hpp"
+#include "minstall/detection.hpp"
 
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <iostream>
 #include <utility>
 #include <wx/wx.h>
@@ -25,6 +27,7 @@ enum MenuId {
     id_generate_catalog,
     id_hide_missing,
     id_installed_cache,
+    id_refresh_installed,
     id_language,
     id_profiles,
     id_check_updates,
@@ -166,18 +169,36 @@ private:
     wxTextCtrl* description_ = nullptr;
 };
 
-std::string program_details(const minstall::Program& program) {
+std::string status_text(const minstall::ProgramStatus& status) {
+    if (!status.applicable) return "Для другой операционной системы";
+    if (status.runnable) return "Всегда доступна; установка не проверяется";
+    if (status.state == minstall::InstallationState::installed)
+        return status.outdated ? "Установлена; версия ниже требуемой" : "Установлена";
+    if (status.state == minstall::InstallationState::missing) return "Не обнаружена";
+    return "Неизвестно — проверка недоступна или неполна";
+}
+
+std::string program_details(const minstall::Program& program, const minstall::ProgramStatus& status) {
     const auto version = program.text("version");
     const auto description = program.text("desc");
+    const auto detect = program.fields.find("detect");
+    const bool framework = detect != program.fields.end() && detect->is_object() &&
+                           detect->contains("net_framework_release");
     return minstall::display_text(program.name()) + "\n" +
            "Версия: " + (version.empty() ? "Не указана" : minstall::display_text(version)) +
+           "\nСтатус: " + status_text(status) +
+           (status.state == minstall::InstallationState::installed ?
+                std::string(framework ? "\nRelease .NET Framework: " : "\nУстановленная версия: ") +
+                    (status.installed_version.empty() ? "Не определена" :
+                    minstall::display_text(status.installed_version)) : "") +
            "\n\nОписание\n" + (description.empty() ? "Описание пока не добавлено." : description);
 }
 
 class ProgramData final : public wxTreeItemData {
 public:
-    explicit ProgramData(const minstall::Program& value) : program(value) {}
+    ProgramData(const minstall::Program& value, const minstall::ProgramStatus& state) : program(value), status(state) {}
     minstall::Program program;
+    minstall::ProgramStatus status;
 };
 
 bool same_catalog(const minstall::Catalog& left, const minstall::Catalog& right) {
@@ -207,7 +228,7 @@ public:
         auto* panel = new wxPanel(this);
         auto* layout = new wxBoxSizer(wxVERTICAL);
         layout->Add(new wxStaticText(panel, wxID_ANY,
-                    utf8("Просмотр каталога · Установка отключена · Состояние программ не проверяется")),
+                    utf8("Просмотр каталога · Проверка установленных программ · Установка отключена")),
                     0, wxALL, 12);
         auto* splitter = new wxSplitterWindow(panel, wxID_ANY);
         tree_ = new wxTreeCtrl(splitter, wxID_ANY, wxDefaultPosition, wxDefaultSize,
@@ -252,7 +273,9 @@ public:
             menus->GetMenuLabelText(2) != utf8("Профили") ||
             menus->GetMenuLabelText(3) != utf8("Справка") ||
             menus->IsEnabled(id_add_program) != scanning || !menus->IsEnabled(id_save_catalog) ||
-            menus->IsEnabled(id_rescan) != scanning || refresh_timer_.IsRunning() != scanning) {
+            menus->IsEnabled(id_rescan) != scanning || refresh_timer_.IsRunning() != scanning ||
+            !menus->IsEnabled(id_refresh_installed) || !menus->IsEnabled(id_installed_cache) ||
+            !menus->IsChecked(id_installed_cache)) {
             return false;
         }
         if (scanning) {
@@ -279,7 +302,7 @@ public:
         if (first_program_.IsOk()) {
             tree_->SelectItem(first_program_);
             const auto* data = static_cast<ProgramData*>(tree_->GetItemData(first_program_));
-            if (!data || details_->GetValue() != utf8(program_details(data->program)) ||
+            if (!data || details_->GetValue() != utf8(program_details(data->program, data->status)) ||
                 menus->IsEnabled(id_edit_program) != scanning) {
                 return false;
             }
@@ -288,11 +311,37 @@ public:
                 details_->GetValue() != utf8("Выберите программу в категории.")) {
                 return false;
             }
+            const auto category_item = tree_->GetSelection();
+            tree_->Collapse(category_item);
+            wxCommandEvent category_refresh(wxEVT_MENU, id_refresh_installed);
+            GetEventHandler()->ProcessEvent(category_refresh);
+            if (tree_->GetSelection() != category_item || tree_->IsExpanded(category_item) ||
+                menus->IsEnabled(id_edit_program)) return false;
+            tree_->Expand(category_item);
             // Leave a populated tree selected when closing: wxMSW emits
             // selection notifications during teardown of this exact case.
             tree_->SelectItem(first_program_);
-            return details_->GetValue() == utf8(program_details(data->program)) &&
-                   menus->IsEnabled(id_edit_program) == scanning;
+            const auto selected_fields = data->program.fields;
+            wxCommandEvent refresh(wxEVT_MENU, id_refresh_installed);
+            GetEventHandler()->ProcessEvent(refresh);
+            const auto selection = tree_->GetSelection();
+            const auto* updated = selection.IsOk() ?
+                dynamic_cast<ProgramData*>(tree_->GetItemData(selection)) : nullptr;
+            if (!updated || updated->program.fields != selected_fields ||
+                details_->GetValue() != utf8(program_details(updated->program, updated->status))) {
+                return false;
+            }
+            wxCommandEvent cache_off(wxEVT_MENU, id_installed_cache);
+            cache_off.SetInt(0);
+            GetMenuBar()->Check(id_installed_cache, false);
+            GetEventHandler()->ProcessEvent(cache_off);
+            if (installed_cache_ || refresh_timer_.IsRunning() != scanning) return false;
+            wxCommandEvent cache_on(wxEVT_MENU, id_installed_cache);
+            cache_on.SetInt(1);
+            GetMenuBar()->Check(id_installed_cache, true);
+            GetEventHandler()->ProcessEvent(cache_on);
+            return installed_cache_ && menus->IsEnabled(id_edit_program) == scanning &&
+                   tree_->GetChildrenCount(tree_->GetRootItem(), true) == expected;
         }
         return details_->GetValue() == utf8(empty_message()) && !menus->IsEnabled(id_edit_program);
     }
@@ -305,7 +354,7 @@ private:
         const auto* data = dynamic_cast<ProgramData*>(tree_->GetItemData(event.GetItem()));
         if (data) {
             // Never load icon paths, follow URLs or execute commands.
-            details_->ChangeValue(utf8(program_details(data->program)));
+            details_->ChangeValue(utf8(program_details(data->program, data->status)));
         } else {
             details_->ChangeValue(utf8("Выберите программу в категории."));
         }
@@ -369,8 +418,15 @@ private:
         watcher->Check(id_watcher_first + (scanning ? 1 : 0), true);
         settings->AppendSubMenu(watcher, utf8("Слежение за software/"),
             utf8("Интервал проверки папки; настройка действует до закрытия программы."))->Enable(scanning);
-        fixed_option(settings, id_installed_cache, "Кеш списка установленных программ", false,
-                     "Обнаружение установленного ПО пока недоступно.");
+        settings->AppendCheckItem(id_installed_cache, utf8("Кеш списка установленных программ"),
+            utf8("Хранить результат проверки до 60 секунд; действует до закрытия окна."))->Check(true);
+        Bind(wxEVT_MENU, [this](wxCommandEvent& event) {
+            installed_cache_ = event.IsChecked();
+            refresh_installed();
+        }, id_installed_cache);
+        settings->Append(id_refresh_installed, utf8("Проверить установленное ПО\tF6"),
+            utf8("Заново прочитать сведения об установленных программах."));
+        Bind(wxEVT_MENU, [this](wxCommandEvent&) { refresh_installed(); }, id_refresh_installed);
         settings->AppendSeparator();
         settings->Append(id_rescan, utf8("Пересканировать software/\tF5"),
                          utf8("Обновить список сейчас, даже если слежение выключено."))->Enable(scanning);
@@ -396,6 +452,10 @@ private:
                 "«Файл → Сохранить каталог» (Ctrl+S) сохраняет список в JSON, без копирования установщиков.\n\n"
                 "Интервал можно изменить в меню «Настройки → Слежение за software/».\n"
                 "При выключенном слежении используйте F5.\n\n"
+                "Статус программы и установленная версия показаны справа.\n"
+                "Нажмите F6, чтобы обновить проверку установленного ПО.\n"
+                "В Windows используются записи реестра; проверка не запускает установщики.\n"
+                "«Не обнаружена» означает отсутствие совпадения, а не гарантию отсутствия программы.\n\n"
                 "При запуске с --catalog показан выбранный JSON: сканирование отключено.\n"
                 "Для обычного режима запустите программу без этого параметра.\n\n"
                 "Серые пункты меню пока недоступны. Установка файлов ещё не выполняется."),
@@ -443,7 +503,10 @@ private:
         try {
             auto refreshed = minstall::load_programs(options_);
             if (scan_failed_ || !same_catalog(catalog_, refreshed)) {
+                snapshot_valid_ = false;
                 show_catalog(std::move(refreshed));
+            } else if (catalog_.program_count() != 0 && snapshot_expired()) {
+                update_installed_statuses();
             }
             scan_failed_ = false;
             return true;
@@ -455,6 +518,53 @@ private:
             SetStatusText(utf8("Ошибка чтения списка программ"));
             return false;
         }
+    }
+
+    bool snapshot_expired() const {
+        return !snapshot_valid_ || !installed_cache_ ||
+            std::chrono::steady_clock::now() - snapshot_time_ >= std::chrono::seconds(60);
+    }
+
+    std::vector<std::vector<minstall::ProgramStatus>> current_statuses() {
+        if (catalog_.program_count() != 0 && snapshot_expired()) {
+            installed_snapshot_ = minstall::collect_installed_snapshot(catalog_, options_.software.parent_path());
+            snapshot_time_ = std::chrono::steady_clock::now();
+            snapshot_valid_ = true;
+        }
+        return minstall::detect_catalog(catalog_, installed_snapshot_);
+    }
+
+    void update_installed_statuses() {
+        const auto statuses = current_statuses();
+        // Refresh status data in place: keep category selection, expansion and
+        // scroll position when the set of installer files has not changed.
+        wxTreeItemIdValue category_cookie;
+        std::size_t c = 0;
+        for (auto category = tree_->GetFirstChild(tree_->GetRootItem(), category_cookie); category.IsOk();
+             category = tree_->GetNextChild(tree_->GetRootItem(), category_cookie), ++c) {
+            wxTreeItemIdValue program_cookie;
+            std::size_t p = 0;
+            for (auto item = tree_->GetFirstChild(category, program_cookie); item.IsOk();
+                 item = tree_->GetNextChild(category, program_cookie), ++p) {
+                auto* data = dynamic_cast<ProgramData*>(tree_->GetItemData(item));
+                if (data) data->status = statuses.at(c).at(p);
+            }
+        }
+        const auto selected = tree_->GetSelection();
+        const auto* data = selected.IsOk() ? dynamic_cast<ProgramData*>(tree_->GetItemData(selected)) : nullptr;
+        if (data) details_->ChangeValue(utf8(program_details(data->program, data->status)));
+    }
+
+    void refresh_installed() {
+        PauseWatcher pause(refresh_timer_);
+        snapshot_valid_ = false;
+        if (!options_.explicit_catalog) {
+            if (!refresh_catalog()) return;
+        } else {
+            update_installed_statuses();
+        }
+        SetStatusText(utf8(catalog_.program_count() == 0 ? "Программ для проверки нет." :
+                           "Сведения об установленном ПО обновлены."));
     }
 
     void update_edit_menu() {
@@ -599,11 +709,15 @@ private:
 
     void show_catalog(minstall::Catalog catalog) {
         std::string selected_path;
+        minstall::Json selected_fields;
+        wxString selected_category;
         const auto selected = tree_->GetSelection();
         if (selected.IsOk()) {
             const auto* data = dynamic_cast<ProgramData*>(tree_->GetItemData(selected));
             if (data) {
                 selected_path = data->program.text("source_path");
+                selected_fields = data->program.fields;
+                selected_category = tree_->GetItemText(tree_->GetItemParent(selected));
             }
         }
         rebuilding_ = true;
@@ -611,18 +725,23 @@ private:
         tree_->DeleteAllItems();
         first_program_ = wxTreeItemId{};
         catalog_ = std::move(catalog);
+        const auto statuses = current_statuses();
         details_->ChangeValue(utf8(catalog_.program_count() == 0 ? empty_message() : "Выберите программу в каталоге."));
         const auto root = tree_->AddRoot("Catalog");
         wxTreeItemId restore_selection;
-        for (const auto& category : catalog_.categories) {
+        for (std::size_t c = 0; c < catalog_.categories.size(); ++c) {
+            const auto& category = catalog_.categories[c];
             const auto category_item = tree_->AppendItem(root, utf8(minstall::display_text(category.name)));
-            for (const auto& program : category.programs) {
+            for (std::size_t p = 0; p < category.programs.size(); ++p) {
+                const auto& program = category.programs[p];
                 const auto item = tree_->AppendItem(category_item, utf8(minstall::display_text(program.name())),
-                                                   -1, -1, new ProgramData(program));
+                                                   -1, -1, new ProgramData(program, statuses[c][p]));
                 if (!first_program_.IsOk()) {
                     first_program_ = item;
                 }
-                if (!selected_path.empty() && program.text("source_path") == selected_path) {
+                if ((!selected_path.empty() && program.text("source_path") == selected_path) ||
+                    (selected_path.empty() && !restore_selection.IsOk() && selected_fields == program.fields &&
+                     selected_category == tree_->GetItemText(category_item))) {
                     restore_selection = item;
                 }
             }
@@ -643,6 +762,10 @@ private:
     int watcher_interval_ = 3000;
     bool rebuilding_ = false;
     bool scan_failed_ = false;
+    bool installed_cache_ = true;
+    bool snapshot_valid_ = false;
+    std::chrono::steady_clock::time_point snapshot_time_;
+    minstall::InstalledSnapshot installed_snapshot_;
     minstall::Catalog catalog_;
     wxTreeCtrl* tree_ = nullptr;
     wxTextCtrl* details_ = nullptr;
